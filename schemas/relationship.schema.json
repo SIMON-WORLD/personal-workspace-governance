@@ -12,10 +12,5 @@
     "from_object_id": {"type": "string", "minLength": 1},
     "type": {"enum": ["part_of", "supports", "uses_standard", "depends_on", "supersedes"]},
     "to_object_id": {"type": "string", "minLength": 1}
-  },
-  "not": {
-    "properties": {
-      "from_object_id": {"const": {"$data": "1/to_object_id"}}
-    }
   }
 }
