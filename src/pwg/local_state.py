@@ -171,27 +171,105 @@ def set_mapping(
     return local_map
 
 
+def _validate_exclude_globs(exclude_globs: list[str]) -> None:
+    for pattern in exclude_globs:
+        if not isinstance(pattern, str) or not pattern:
+            raise LocalStateError("exclude_globs entries must be non-empty strings")
+        if pattern.startswith(("/", "\\")):
+            raise LocalStateError(
+                f"exclude_glob must be relative to its trusted root: {pattern!r}"
+            )
+        if len(pattern) >= 2 and pattern[1] == ":":
+            raise LocalStateError(
+                f"exclude_glob must be relative to its trusted root: {pattern!r}"
+            )
+
+
 def add_trusted_root(
     home: str | Path | None,
     path: str | Path,
     *,
     max_depth: int = 4,
+    exclude_globs: list[str] | None = None,
 ) -> dict[str, Any]:
     if not isinstance(max_depth, int) or not 0 <= max_depth <= 12:
         raise LocalStateError("max_depth must be an integer between 0 and 12")
+    globs = list(exclude_globs or [])
+    _validate_exclude_globs(globs)
     home_path = _home_path(home)
     _load_yaml(home_path / "config.yaml")
     trusted_path = home_path / "trusted-roots.yaml"
     trusted = _load_yaml(trusted_path)
     roots = trusted.setdefault("roots", [])
     resolved = str(Path(path).expanduser().resolve())
+
     for item in roots:
         if item.get("path") == resolved:
+            changed = False
             if item.get("max_depth") != max_depth:
                 item["max_depth"] = max_depth
+                changed = True
+            existing = item.setdefault("exclude_globs", [])
+            for pattern in globs:
+                if pattern not in existing:
+                    existing.append(pattern)
+                    changed = True
+            if existing:
+                existing.sort(key=lambda value: value.casefold())
+                item["exclude_globs"] = existing
+            else:
+                item.pop("exclude_globs", None)
+            if changed:
                 _atomic_write_yaml(trusted_path, trusted)
             return trusted
-    roots.append({"path": resolved, "max_depth": max_depth})
+
+    entry: dict[str, Any] = {"path": resolved, "max_depth": max_depth}
+    if globs:
+        globs.sort(key=lambda value: value.casefold())
+        entry["exclude_globs"] = globs
+    roots.append(entry)
     roots.sort(key=lambda item: item["path"].casefold())
     _atomic_write_yaml(trusted_path, trusted)
     return trusted
+
+
+def remove_trusted_root(
+    home: str | Path | None,
+    path: str | Path,
+    *,
+    exclude_glob: str | None = None,
+) -> dict[str, Any]:
+    home_path = _home_path(home)
+    _load_yaml(home_path / "config.yaml")
+    trusted_path = home_path / "trusted-roots.yaml"
+    trusted = _load_yaml(trusted_path)
+    roots = trusted.setdefault("roots", [])
+    resolved = str(Path(path).expanduser().resolve())
+
+    for item in list(roots):
+        if item.get("path") != resolved:
+            continue
+        if exclude_glob is None:
+            roots.remove(item)
+        else:
+            existing = item.get("exclude_globs", [])
+            if exclude_glob not in existing:
+                raise LocalStateError(
+                    f"trusted root {resolved} has no exclusion {exclude_glob!r}"
+                )
+            existing = [value for value in existing if value != exclude_glob]
+            if existing:
+                item["exclude_globs"] = existing
+            else:
+                item.pop("exclude_globs", None)
+        _atomic_write_yaml(trusted_path, trusted)
+        return trusted
+    raise LocalStateError(f"unknown trusted root: {resolved}")
+
+
+def list_trusted_roots(home: str | Path | None = None) -> list[dict[str, Any]]:
+    trusted = load_trusted_roots(home)
+    roots = trusted.get("roots", [])
+    if not isinstance(roots, list):
+        raise LocalStateError("trusted-roots roots must be a list")
+    return list(roots)

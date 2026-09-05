@@ -26,7 +26,8 @@ The initial decisions below were extracted from repeated architecture dogfood ac
 | ADR-015 | Workspace Object birth occurs at the durable identity boundary. | Accepted |
 | ADR-016 | Connector/tool capability is not a Surface unless the object itself exists on that platform. | Accepted |
 | ADR-017 | Hub inactivity is not sufficient evidence of retirement. | Accepted |
+| ADR-018 | Local Surface realization is explicit (git / directory / container) and may bind to one provider repository Surface. | Accepted |
 
 ## Notes
 
-Individual ADR files may be introduced when a decision needs deeper rationale, alternatives, or implementation consequences. Until then, this index plus `SPEC.md` is normative for the v0.2 baseline.
+Individual ADR files may be introduced when a decision needs deeper rationale, alternatives, or implementation consequences. Until then, this index plus `SPEC.md` and `docs/surface-realization-and-discovery.md` (Phase 2.2) is normative for the v0.2 baseline.

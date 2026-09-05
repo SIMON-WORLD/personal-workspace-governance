@@ -26,12 +26,48 @@
       "minProperties": 1,
       "additionalProperties": {"type": ["string", "integer", "number", "boolean", "null"]}
     },
-    "machine_id": {"type": "string", "minLength": 1}
+    "machine_id": {"type": "string", "minLength": 1},
+    "realization_kind": {"enum": ["git", "directory", "container"]},
+    "binds_to_surface_id": {"type": "string", "minLength": 1}
   },
   "allOf": [
     {
       "if": {"properties": {"kind": {"const": "local"}}, "required": ["kind"]},
       "then": {"required": ["machine_id"]}
+    },
+    {
+      "if": {
+        "properties": {"kind": {"not": {"const": "local"}}},
+        "required": ["kind"]
+      },
+      "then": {
+        "properties": {
+          "realization_kind": false,
+          "binds_to_surface_id": false
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"realization_kind": {"const": "git"}},
+        "required": ["realization_kind"]
+      },
+      "then": {"required": ["binds_to_surface_id"]}
+    },
+    {
+      "if": {
+        "properties": {"realization_kind": {"enum": ["directory", "container"]}},
+        "required": ["realization_kind"]
+      },
+      "then": {
+        "properties": {"binds_to_surface_id": false}
+      }
+    },
+    {
+      "if": {"required": ["binds_to_surface_id"]},
+      "then": {
+        "properties": {"realization_kind": {"const": "git"}}
+      }
     }
   ]
 }

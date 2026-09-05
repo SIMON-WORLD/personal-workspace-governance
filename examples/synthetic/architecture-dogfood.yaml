@@ -93,6 +93,8 @@ surfaces:
     role: exec
     resource_type: directory
     machine_id: workstation
+    realization_kind: git
+    binds_to_surface_id: surf-repo-github
 
   - schema_version: 1
     id: surf-paper-chatgpt
@@ -110,6 +112,7 @@ surfaces:
     role: exec
     resource_type: directory
     machine_id: workstation
+    realization_kind: directory
 
   - schema_version: 1
     id: surf-brand-chatgpt
@@ -147,6 +150,7 @@ surfaces:
     role: exec
     resource_type: directory
     machine_id: workstation
+    realization_kind: container
 
   - schema_version: 1
     id: surf-lab-laptop

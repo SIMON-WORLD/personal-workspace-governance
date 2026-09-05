@@ -5,12 +5,29 @@ import json
 import sys
 from pathlib import Path
 
-from .local_state import LocalStateError, add_trusted_root, bootstrap_local_state, default_home, set_mapping
+from .local_state import (
+    LocalStateError,
+    add_trusted_root,
+    bootstrap_local_state,
+    default_home,
+    list_trusted_roots,
+    remove_trusted_root,
+    set_mapping,
+)
 from .reconcile import reconcile
 
 
 def _home(value: str | None) -> Path:
     return default_home() if value is None else Path(value).expanduser().resolve()
+
+
+def _ascii_safe(value: str) -> str:
+    """Render arbitrary text without risking a Windows charmap encode crash."""
+    try:
+        value.encode(sys.stdout.encoding or "ascii")
+        return value
+    except UnicodeEncodeError:
+        return value.encode("ascii", "backslashreplace").decode("ascii")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,6 +46,14 @@ def build_parser() -> argparse.ArgumentParser:
     trust = sub.add_parser("trust-add", help="Authorize a bounded discovery root")
     trust.add_argument("--path", required=True)
     trust.add_argument("--max-depth", type=int, default=4)
+    trust.add_argument("--exclude-glob", action="append", default=[], metavar="GLOB",
+                       help="Root-relative exclusion glob; repeatable")
+
+    trust_list = sub.add_parser("trust-list", help="List machine-local trusted roots")
+    trust_rm = sub.add_parser("trust-rm", help="Remove a trusted root or one of its exclusions")
+    trust_rm.add_argument("--path", required=True)
+    trust_rm.add_argument("--exclude-glob", default=None, metavar="GLOB",
+                          help="Remove only this exclusion; omit to remove the whole root")
 
     status = sub.add_parser("reconcile", help="Compare registered local Surfaces with observed local reality")
     status.add_argument("--registry")
@@ -50,8 +75,28 @@ def main(argv: list[str] | None = None) -> int:
             result = set_mapping(home, args.surface_id, args.path)
             print(f"Mapped {args.surface_id}; local-map revision {result['revision']}")
         elif args.command == "trust-add":
-            add_trusted_root(home, args.path, max_depth=args.max_depth)
-            print(f"Trusted root added: {Path(args.path).expanduser().resolve()}")
+            add_trusted_root(
+                home,
+                args.path,
+                max_depth=args.max_depth,
+                exclude_globs=args.exclude_glob,
+            )
+            print(f"Trusted root added: {_ascii_safe(str(Path(args.path).expanduser().resolve()))}")
+        elif args.command == "trust-list":
+            for item in list_trusted_roots(home):
+                root_path = _ascii_safe(item["path"])
+                exclusions = item.get("exclude_globs", [])
+                if exclusions:
+                    print(f"{root_path} (max_depth={item.get('max_depth', 4)}, "
+                          f"exclude_globs={','.join(exclusions)})")
+                else:
+                    print(f"{root_path} (max_depth={item.get('max_depth', 4)})")
+        elif args.command == "trust-rm":
+            remove_trusted_root(home, args.path, exclude_glob=args.exclude_glob)
+            if args.exclude_glob:
+                print(f"Removed exclusion {args.exclude_glob} from {_ascii_safe(str(Path(args.path).expanduser().resolve()))}")
+            else:
+                print(f"Removed trusted root: {_ascii_safe(str(Path(args.path).expanduser().resolve()))}")
         elif args.command == "reconcile":
             findings = reconcile(home, args.registry, include_trusted=args.trusted)
             if args.as_json:

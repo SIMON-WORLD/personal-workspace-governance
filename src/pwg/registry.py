@@ -89,6 +89,29 @@ class RegistrySnapshot:
             key=lambda item: item["id"],
         )
 
+    def github_repository_surfaces(self, object_id: str) -> list[dict[str, Any]]:
+        """Return every GitHub repository Surface bound to an object."""
+        return [
+            surface
+            for surface in self.surfaces.values()
+            if surface.get("object_id") == object_id
+            and surface.get("kind") == "github"
+            and surface.get("resource_type") == "repository"
+        ]
+
+    def github_full_name_for_surface(self, surface_id: str) -> str | None:
+        """Return the GitHub full name of the Surface a Local Surface binds to."""
+        target = self.surfaces.get(surface_id) if surface_id else None
+        if target is None:
+            return None
+        if target.get("kind") != "github" or target.get("resource_type") != "repository":
+            return None
+        locator = target.get("locator")
+        if not isinstance(locator, dict):
+            return None
+        full_name = locator.get("full_name")
+        return full_name if isinstance(full_name, str) else None
+
     def github_full_name_for_object(self, object_id: str) -> str | None:
         candidates = [
             surface
