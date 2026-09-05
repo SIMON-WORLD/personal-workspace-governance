@@ -1,0 +1,85 @@
+schema_version: 1
+profile: chatgpt-default
+kind: ui-projection
+
+lifecycle_sections:
+  hub:
+    label: "Hubs · 常驻"
+    emoji: "🧭"
+  active:
+    label: "Projects · 进行中"
+    emoji: "🚧"
+  incubator:
+    label: "Incubator · 孵化"
+    emoji: "🧪"
+  archive:
+    label: "Archive · 归档"
+    emoji: "📦"
+
+unsectioned:
+  semantic_role: capture_or_inbox
+  canonical_lifecycle: false
+
+naming:
+  cloud_or_primary: "{type_label} · {name}"
+  local_exec: "{type_label} · {name} · Exec"
+  forbid_lifecycle_in_name: true
+  forbid_priority_in_name: true
+  forbid_machine_id_in_name: true
+
+ui_semantics:
+  section: lifecycle
+  name: identity
+  icon: type_cue
+  color: machine_or_environment
+  pin: current_focus
+  chat_title: thread_role
+
+chat_numbering:
+  structural_threads_only: true
+  bands:
+    "00": brain
+    "10-19": research
+    "20-29": design
+    "30-39": execute
+    "40-49": verify
+    "50-59": writing
+    "60-69": ops
+    "90-99": meta
+
+icon_cues:
+  paper: [academic, book, flask]
+  research: [academic, book, flask]
+  repo: [code, repository]
+  tool: [wrench, tool]
+  product: [cube, package]
+  brand: [pen, flag, megaphone]
+  system: [gear, network]
+  series: [collection, stack]
+  intel: [globe, radar]
+  learn: [book, graduation]
+  area: [compass, domain-specific]
+  lab: [flask, experiment]
+  project: [folder, checklist]
+
+color_policy:
+  cloud: neutral_or_default
+  local: distinct_stable_color_per_machine
+  priority_signal: pin
+  actual_machine_color_mapping: private_registry
+
+machine_identity:
+  recommended_pattern: "pc-[a-z]"
+  example_sequence: [pc-a, pc-b, pc-c, pc-d]
+  stable_across_role_changes: true
+  mutable_role_fields: [name, classes, ui]
+
+projection_rules:
+  section_from: object.lifecycle
+  icon_cue_from: object.type
+  exec_suffix_from: surface.role
+  color_from: machine.ui
+
+privacy:
+  contains_real_machine_mapping: false
+  contains_personal_registry_data: false
