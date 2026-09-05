@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import sys
+
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +13,9 @@ import yaml
 from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+from pwg.realization import validate_surface_realizations
+
 SCHEMA_DIR = ROOT / "schemas"
 EXAMPLE_FILE = ROOT / "examples" / "synthetic" / "architecture-dogfood.yaml"
 CHATGPT_PROFILE_FILE = ROOT / "profiles" / "chatgpt-default.yaml"
@@ -130,6 +135,10 @@ def main() -> None:
         Draft202012Validator(schemas["local_map"]).validate(item)
     for item in policy_exceptions:
         Draft202012Validator(schemas["policy_exception"]).validate(item)
+
+    errors = validate_surface_realizations(objects, surfaces)
+    if errors:
+        raise AssertionError("surface realization validation failed: " + "; ".join(errors))
 
     assert_unique(objects, "Workspace Object")
     assert_unique(surfaces, "Surface")
