@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/personal-workspace-governance/relationship.schema.json",
+  "title": "Relationship",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "revision", "id", "from_object_id", "type", "to_object_id"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "minLength": 1},
+    "from_object_id": {"type": "string", "minLength": 1},
+    "type": {"enum": ["part_of", "supports", "uses_standard", "depends_on", "supersedes"]},
+    "to_object_id": {"type": "string", "minLength": 1}
+  },
+  "not": {
+    "properties": {
+      "from_object_id": {"const": {"$data": "1/to_object_id"}}
+    }
+  }
+}
