@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/personal-workspace-governance/local-map.schema.json",
+  "title": "Machine-local Workspace Map",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "revision", "machine_id", "workspaces"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "machine_id": {"type": "string", "minLength": 1},
+    "workspaces": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}
