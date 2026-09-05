@@ -38,11 +38,10 @@ def is_git_workspace(path: str | Path) -> bool:
     return (Path(path) / ".git").exists()
 
 
-def read_origin_remote(path: str | Path) -> tuple[str | None, str | None]:
-    workspace = Path(path)
+def _run_git(workspace: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
     try:
-        result = subprocess.run(
-            ["git", "-C", str(workspace), "remote", "get-url", "origin"],
+        return subprocess.run(
+            ["git", "-C", str(workspace), *args],
             check=False,
             capture_output=True,
             text=True,
@@ -51,8 +50,21 @@ def read_origin_remote(path: str | Path) -> tuple[str | None, str | None]:
     except FileNotFoundError as exc:
         raise GitInspectionError("git executable is not available") from exc
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise GitInspectionError(f"cannot inspect git remote for {workspace}: {exc}") from exc
-    if result.returncode != 0:
-        return None, None
-    raw = result.stdout.strip()
-    return raw, canonicalize_github_remote(raw)
+        raise GitInspectionError(f"cannot inspect git workspace {workspace}: {exc}") from exc
+
+
+def read_origin_remote(path: str | Path) -> tuple[str | None, str | None]:
+    workspace = Path(path)
+    result = _run_git(workspace, ["remote", "get-url", "origin"])
+    if result.returncode == 0:
+        raw = result.stdout.strip()
+        return raw, canonicalize_github_remote(raw)
+    # The origin could not be read. Distinguish "valid repo without an origin"
+    # from "repo metadata is currently unreadable" (e.g. not a git checkout,
+    # permission/ownership errors) so callers do not misclassify the latter as
+    # identity drift.
+    probe = _run_git(workspace, ["rev-parse", "--is-inside-work-tree"])
+    if probe.returncode != 0:
+        detail = (probe.stderr or result.stderr or "").strip()
+        raise GitInspectionError(f"cannot inspect git workspace {workspace}: {detail}")
+    return None, None
