@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/personal-workspace-governance/machine.schema.json",
+  "title": "Machine",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "revision", "id", "name", "status"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "minLength": 1, "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?$"},
+    "name": {"type": "string", "minLength": 1},
+    "status": {"enum": ["active", "retired"]},
+    "classes": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true,
+      "default": []
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "local_project_color": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}
