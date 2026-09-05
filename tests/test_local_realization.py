@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import io
+import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 import yaml
 
+from pwg.cli import main
 from pwg.discovery import discover_git_candidates
 from pwg.git_identity import canonicalize_github_remote
 from pwg.local_state import LocalStateError, add_trusted_root, bootstrap_local_state, set_mapping
@@ -298,6 +302,38 @@ class LocalRealizationTests(unittest.TestCase):
 
             after = (home / "local-map.yaml").read_bytes()
             self.assertEqual(before, after)
+
+    def test_reconcile_json_handles_non_ascii_paths(self) -> None:
+        # Regression: pwg reconcile --json must not crash when a machine-local
+        # map contains non-ASCII workspace paths. On Windows the pipe stdout
+        # encoding is cp1252 (charmap); the JSON payload must stay ASCII-safe.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            registry = root / "registry"
+            home = root / "home"
+            workspace = root / "工作区"
+            workspace.mkdir()
+            make_registry(registry)
+            bootstrap_local_state(home, "pc-a", registry)
+            set_mapping(home, "surf-local", workspace)
+            init_git_repo(workspace, "https://github.com/example-org/example-repo.git")
+
+            buffer = io.BytesIO()
+            wrapper = io.TextIOWrapper(buffer, encoding="cp1252")
+            original_stdout, original_stderr = sys.stdout, sys.stderr
+            sys.stdout, sys.stderr = wrapper, io.StringIO()
+            try:
+                code = main(["--home", str(home), "reconcile", "--registry", str(registry), "--json"])
+                wrapper.flush()
+            finally:
+                sys.stdout, sys.stderr = original_stdout, original_stderr
+                wrapper.detach()
+
+            self.assertEqual(code, 0)
+            findings = json.loads(buffer.getvalue().decode("cp1252"))
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0]["classification"], "MATCH")
+            self.assertEqual(findings[0]["declared"]["path"], str(workspace.resolve()))
 
 
 if __name__ == "__main__":
