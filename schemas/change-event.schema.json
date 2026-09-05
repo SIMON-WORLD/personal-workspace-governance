@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/personal-workspace-governance/change-event.schema.json",
+  "title": "Change Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "timestamp", "operation", "target", "actor", "revision", "changes"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "event_id": {"type": "string", "minLength": 1},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "operation": {
+      "enum": [
+        "REGISTER",
+        "RENAME",
+        "RETYPE",
+        "PROMOTE",
+        "ARCHIVE",
+        "RESTORE",
+        "ATTACH_SURFACE",
+        "DETACH_SURFACE",
+        "UPDATE_SURFACE",
+        "REGISTER_MACHINE",
+        "RETIRE_MACHINE",
+        "MAP_LOCAL_PATH",
+        "REMAP_LOCAL_PATH",
+        "UNMAP_LOCAL_PATH",
+        "LINK_OBJECTS",
+        "UNLINK_OBJECTS"
+      ]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {"enum": ["workspace_object", "surface", "relationship", "machine", "local_map"]},
+        "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"enum": ["human", "agent", "automation"]},
+        "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "reason": {"type": "string"},
+    "revision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["before", "after"],
+      "properties": {
+        "before": {"type": ["integer", "null"], "minimum": 0},
+        "after": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "changes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["before", "after"],
+        "properties": {
+          "before": {},
+          "after": {}
+        }
+      }
+    }
+  }
+}
