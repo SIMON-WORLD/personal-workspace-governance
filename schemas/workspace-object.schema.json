@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/personal-workspace-governance/workspace-object.schema.json",
+  "title": "Workspace Object",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "revision", "id", "slug", "name", "type", "lifecycle"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "minLength": 1},
+    "slug": {"type": "string", "minLength": 1, "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?$"},
+    "name": {"type": "string", "minLength": 1},
+    "type": {
+      "enum": ["paper", "research", "repo", "tool", "product", "brand", "system", "series", "intel", "learn", "area", "lab", "project"]
+    },
+    "lifecycle": {"enum": ["hub", "active", "incubator", "archive"]},
+    "aliases": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true,
+      "default": []
+    }
+  }
+}
