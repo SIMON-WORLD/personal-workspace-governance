@@ -23,6 +23,8 @@ SCHEMA_FILES = {
     "local_map": "local-map.schema.json",
     "policy_exception": "policy-exception.schema.json",
     "change_event": "change-event.schema.json",
+    "local_realization_config": "local-realization-config.schema.json",
+    "trusted_roots": "trusted-roots.schema.json",
 }
 
 CANONICAL_LIFECYCLES = {"hub", "active", "incubator", "archive"}
