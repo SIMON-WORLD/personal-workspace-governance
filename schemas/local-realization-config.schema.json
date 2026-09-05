@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/personal-workspace-governance/local-realization-config.schema.json",
+  "title": "Machine-local Realization Config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "machine_id",
+    "registry_path"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "machine_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?$"
+    },
+    "registry_path": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

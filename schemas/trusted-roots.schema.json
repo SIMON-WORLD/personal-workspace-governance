@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/personal-workspace-governance/trusted-roots.schema.json",
+  "title": "Machine-local Trusted Roots",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "roots"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "roots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "max_depth"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "max_depth": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 12
+          }
+        }
+      }
+    }
+  }
+}
