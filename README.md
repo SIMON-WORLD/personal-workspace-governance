@@ -4,6 +4,8 @@ A governance specification and reference toolkit for long-lived personal AI work
 
 This project defines a durable model for organizing and reconciling personal work across research, software development, content systems, long-running information hubs, and other AI-assisted workflows without requiring a single filesystem root or a single application to become the source of truth.
 
+> **Start here for day-to-day use:** [`docs/quick-reference.md`](docs/quick-reference.md) — lifecycle ↔ Section mapping, naming, icons, colors, machine IDs, chat numbering, and the one-page source-of-truth map.
+
 ## Status
 
 Architecture v0.2 is the current design baseline. It has been stress-tested against multi-machine, cloud-only, local-only, GitHub-backed, research, brand, system, lab, automation, migration, and capture scenarios. The repository is now moving from architecture dogfood into a reviewed specification phase.
@@ -41,9 +43,12 @@ A real personal instance belongs in a separate private registry. Machine-local p
 
 ## Repository map
 
+- [`docs/quick-reference.md`](docs/quick-reference.md) — human cheat sheet / one-page operating map.
 - [`SPEC.md`](SPEC.md) — normative specification and vocabulary.
 - [`docs/architecture.md`](docs/architecture.md) — architecture and source-of-truth boundaries.
 - [`docs/lifecycle-and-registration.md`](docs/lifecycle-and-registration.md) — capture, registration, lifecycle, graduation, and retirement.
+- [`docs/chatgpt-ui-conventions.md`](docs/chatgpt-ui-conventions.md) — ChatGPT-specific Section, naming, icon, color, pin, chat-title, cloud/local, and machine-ID conventions.
+- [`profiles/chatgpt-default.yaml`](profiles/chatgpt-default.yaml) — machine-readable default ChatGPT UI projection profile.
 - [`docs/change-protocol.md`](docs/change-protocol.md) — safe structural mutation protocol.
 - [`docs/discovery-reconciliation.md`](docs/discovery-reconciliation.md) — discovery, identity matching, drift classification, and reconciliation.
 - [`adr/README.md`](adr/README.md) — accepted architecture decisions from the v0.2 design phase.

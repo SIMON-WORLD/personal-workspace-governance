@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate governance schemas, synthetic examples, and core cross-entity invariants."""
+"""Validate governance schemas, synthetic examples, UI profiles, and core invariants."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from jsonschema import Draft202012Validator
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_DIR = ROOT / "schemas"
 EXAMPLE_FILE = ROOT / "examples" / "synthetic" / "architecture-dogfood.yaml"
+CHATGPT_PROFILE_FILE = ROOT / "profiles" / "chatgpt-default.yaml"
 
 SCHEMA_FILES = {
     "object": "workspace-object.schema.json",
@@ -24,16 +25,76 @@ SCHEMA_FILES = {
     "change_event": "change-event.schema.json",
 }
 
+CANONICAL_LIFECYCLES = {"hub", "active", "incubator", "archive"}
+CANONICAL_TYPES = {
+    "paper",
+    "research",
+    "repo",
+    "tool",
+    "product",
+    "brand",
+    "system",
+    "series",
+    "intel",
+    "learn",
+    "area",
+    "lab",
+    "project",
+}
+
 
 def load_json(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
+def load_yaml(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        value = yaml.safe_load(handle)
+    if not isinstance(value, dict):
+        raise AssertionError(f"{path} must contain a YAML mapping")
+    return value
+
+
 def assert_unique(records: list[dict[str, Any]], label: str) -> None:
     ids = [record["id"] for record in records]
     if len(ids) != len(set(ids)):
         raise AssertionError(f"duplicate {label} ids detected")
+
+
+def validate_chatgpt_profile(profile: dict[str, Any]) -> None:
+    if profile.get("schema_version") != 1:
+        raise AssertionError("ChatGPT profile must use schema_version 1")
+    if profile.get("profile") != "chatgpt-default":
+        raise AssertionError("unexpected ChatGPT profile id")
+    if profile.get("kind") != "ui-projection":
+        raise AssertionError("ChatGPT profile must be a ui-projection")
+
+    lifecycle_sections = profile.get("lifecycle_sections", {})
+    if set(lifecycle_sections) != CANONICAL_LIFECYCLES:
+        raise AssertionError("ChatGPT lifecycle projection must cover exactly the canonical lifecycle vocabulary")
+
+    icon_cues = profile.get("icon_cues", {})
+    if set(icon_cues) != CANONICAL_TYPES:
+        raise AssertionError("ChatGPT icon cues must cover exactly the current canonical type vocabulary")
+
+    semantics = profile.get("ui_semantics", {})
+    expected_semantics = {
+        "section": "lifecycle",
+        "name": "identity",
+        "icon": "type_cue",
+        "color": "machine_or_environment",
+        "pin": "current_focus",
+        "chat_title": "thread_role",
+    }
+    if semantics != expected_semantics:
+        raise AssertionError("ChatGPT UI semantic map changed unexpectedly")
+
+    privacy = profile.get("privacy", {})
+    if privacy.get("contains_real_machine_mapping") is not False:
+        raise AssertionError("public ChatGPT profile must not contain a real machine-color mapping")
+    if privacy.get("contains_personal_registry_data") is not False:
+        raise AssertionError("public ChatGPT profile must not contain personal registry data")
 
 
 def main() -> None:
@@ -44,8 +105,9 @@ def main() -> None:
         if schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
             raise AssertionError(f"{name} does not declare JSON Schema draft 2020-12")
 
-    with EXAMPLE_FILE.open("r", encoding="utf-8") as handle:
-        example = yaml.safe_load(handle)
+    example = load_yaml(EXAMPLE_FILE)
+    chatgpt_profile = load_yaml(CHATGPT_PROFILE_FILE)
+    validate_chatgpt_profile(chatgpt_profile)
 
     objects = example.get("objects", [])
     surfaces = example.get("surfaces", [])
@@ -124,7 +186,7 @@ def main() -> None:
 
     print(
         "Validation passed: "
-        f"{len(schemas)} schemas, {len(objects)} objects, {len(surfaces)} surfaces, "
+        f"{len(schemas)} schemas, 1 ChatGPT UI profile, {len(objects)} objects, {len(surfaces)} surfaces, "
         f"{len(relationships)} relationships, {len(machines)} machines, "
         f"{len(local_maps)} local maps, {len(policy_exceptions)} policy exceptions."
     )
