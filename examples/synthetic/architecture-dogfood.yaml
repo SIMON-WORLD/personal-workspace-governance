@@ -1,7 +1,8 @@
 schema_version: 1
 
 objects:
-  - id: obj-example-repo
+  - schema_version: 1
+    id: obj-example-repo
     revision: 1
     slug: example-orchestrator
     name: Example Orchestrator
@@ -9,7 +10,8 @@ objects:
     lifecycle: active
     aliases: []
 
-  - id: obj-example-paper
+  - schema_version: 1
+    id: obj-example-paper
     revision: 1
     slug: example-demand-study
     name: Example Demand Study
@@ -17,7 +19,8 @@ objects:
     lifecycle: active
     aliases: []
 
-  - id: obj-example-brand
+  - schema_version: 1
+    id: obj-example-brand
     revision: 1
     slug: example-studio
     name: Example Studio
@@ -25,7 +28,8 @@ objects:
     lifecycle: hub
     aliases: []
 
-  - id: obj-example-content-system
+  - schema_version: 1
+    id: obj-example-content-system
     revision: 1
     slug: example-content-os
     name: Example Content OS
@@ -33,7 +37,8 @@ objects:
     lifecycle: hub
     aliases: []
 
-  - id: obj-example-intel
+  - schema_version: 1
+    id: obj-example-intel
     revision: 1
     slug: example-intelligence
     name: Example Intelligence
@@ -41,7 +46,8 @@ objects:
     lifecycle: hub
     aliases: []
 
-  - id: obj-example-lab
+  - schema_version: 1
+    id: obj-example-lab
     revision: 1
     slug: local-experiments
     name: Local Experiments
@@ -49,7 +55,8 @@ objects:
     lifecycle: hub
     aliases: []
 
-  - id: obj-example-standard
+  - schema_version: 1
+    id: obj-example-standard
     revision: 1
     slug: example-workspace-standard
     name: Example Workspace Standard
@@ -58,14 +65,16 @@ objects:
     aliases: []
 
 surfaces:
-  - id: surf-repo-chatgpt
+  - schema_version: 1
+    id: surf-repo-chatgpt
     revision: 1
     object_id: obj-example-repo
     kind: chatgpt
     role: brain
     resource_type: project
 
-  - id: surf-repo-github
+  - schema_version: 1
+    id: surf-repo-github
     revision: 1
     object_id: obj-example-repo
     kind: github
@@ -76,7 +85,8 @@ surfaces:
     locator:
       full_name: example-org/example-orchestrator
 
-  - id: surf-repo-workstation
+  - schema_version: 1
+    id: surf-repo-workstation
     revision: 1
     object_id: obj-example-repo
     kind: local
@@ -84,14 +94,16 @@ surfaces:
     resource_type: directory
     machine_id: workstation
 
-  - id: surf-paper-chatgpt
+  - schema_version: 1
+    id: surf-paper-chatgpt
     revision: 1
     object_id: obj-example-paper
     kind: chatgpt
     role: brain
     resource_type: project
 
-  - id: surf-paper-workstation
+  - schema_version: 1
+    id: surf-paper-workstation
     revision: 1
     object_id: obj-example-paper
     kind: local
@@ -99,14 +111,16 @@ surfaces:
     resource_type: directory
     machine_id: workstation
 
-  - id: surf-brand-chatgpt
+  - schema_version: 1
+    id: surf-brand-chatgpt
     revision: 1
     object_id: obj-example-brand
     kind: chatgpt
     role: brain
     resource_type: project
 
-  - id: surf-brand-github-org
+  - schema_version: 1
+    id: surf-brand-github-org
     revision: 1
     object_id: obj-example-brand
     kind: github
@@ -117,14 +131,16 @@ surfaces:
     locator:
       login: example-studio
 
-  - id: surf-intel-chatgpt
+  - schema_version: 1
+    id: surf-intel-chatgpt
     revision: 1
     object_id: obj-example-intel
     kind: chatgpt
     role: brain
     resource_type: project
 
-  - id: surf-lab-workstation
+  - schema_version: 1
+    id: surf-lab-workstation
     revision: 1
     object_id: obj-example-lab
     kind: local
@@ -132,7 +148,8 @@ surfaces:
     resource_type: directory
     machine_id: workstation
 
-  - id: surf-lab-laptop
+  - schema_version: 1
+    id: surf-lab-laptop
     revision: 1
     object_id: obj-example-lab
     kind: local
@@ -141,20 +158,23 @@ surfaces:
     machine_id: laptop
 
 relationships:
-  - id: rel-content-supports-brand
+  - schema_version: 1
+    id: rel-content-supports-brand
     revision: 1
     from_object_id: obj-example-content-system
     type: supports
     to_object_id: obj-example-brand
 
-  - id: rel-lab-uses-standard
+  - schema_version: 1
+    id: rel-lab-uses-standard
     revision: 1
     from_object_id: obj-example-lab
     type: uses_standard
     to_object_id: obj-example-standard
 
 machines:
-  - id: workstation
+  - schema_version: 1
+    id: workstation
     revision: 1
     name: Example Workstation
     status: active
@@ -164,7 +184,8 @@ machines:
     ui:
       local_project_color: blue
 
-  - id: laptop
+  - schema_version: 1
+    id: laptop
     revision: 1
     name: Example Laptop
     status: active
@@ -196,7 +217,8 @@ local_maps:
         path: "E:/Labs/local-experiments"
 
 policy_exceptions:
-  - id: waiver-example-legacy-placement
+  - schema_version: 1
+    id: waiver-example-legacy-placement
     revision: 1
     rule_id: dedicated_workspace_for_long_lived_repo
     target:
