@@ -1,0 +1,231 @@
+schema_version: 1
+
+objects:
+  - schema_version: 1
+    id: obj-example-repo
+    revision: 1
+    slug: example-orchestrator
+    name: Example Orchestrator
+    type: repo
+    lifecycle: active
+    aliases: []
+
+  - schema_version: 1
+    id: obj-example-paper
+    revision: 1
+    slug: example-demand-study
+    name: Example Demand Study
+    type: paper
+    lifecycle: active
+    aliases: []
+
+  - schema_version: 1
+    id: obj-example-brand
+    revision: 1
+    slug: example-studio
+    name: Example Studio
+    type: brand
+    lifecycle: hub
+    aliases: []
+
+  - schema_version: 1
+    id: obj-example-content-system
+    revision: 1
+    slug: example-content-os
+    name: Example Content OS
+    type: system
+    lifecycle: hub
+    aliases: []
+
+  - schema_version: 1
+    id: obj-example-intel
+    revision: 1
+    slug: example-intelligence
+    name: Example Intelligence
+    type: intel
+    lifecycle: hub
+    aliases: []
+
+  - schema_version: 1
+    id: obj-example-lab
+    revision: 1
+    slug: local-experiments
+    name: Local Experiments
+    type: lab
+    lifecycle: hub
+    aliases: []
+
+  - schema_version: 1
+    id: obj-example-standard
+    revision: 1
+    slug: example-workspace-standard
+    name: Example Workspace Standard
+    type: repo
+    lifecycle: hub
+    aliases: []
+
+surfaces:
+  - schema_version: 1
+    id: surf-repo-chatgpt
+    revision: 1
+    object_id: obj-example-repo
+    kind: chatgpt
+    role: brain
+    resource_type: project
+
+  - schema_version: 1
+    id: surf-repo-github
+    revision: 1
+    object_id: obj-example-repo
+    kind: github
+    role: source
+    resource_type: repository
+    provider_identity:
+      id: "123456789"
+    locator:
+      full_name: example-org/example-orchestrator
+
+  - schema_version: 1
+    id: surf-repo-workstation
+    revision: 1
+    object_id: obj-example-repo
+    kind: local
+    role: exec
+    resource_type: directory
+    machine_id: workstation
+
+  - schema_version: 1
+    id: surf-paper-chatgpt
+    revision: 1
+    object_id: obj-example-paper
+    kind: chatgpt
+    role: brain
+    resource_type: project
+
+  - schema_version: 1
+    id: surf-paper-workstation
+    revision: 1
+    object_id: obj-example-paper
+    kind: local
+    role: exec
+    resource_type: directory
+    machine_id: workstation
+
+  - schema_version: 1
+    id: surf-brand-chatgpt
+    revision: 1
+    object_id: obj-example-brand
+    kind: chatgpt
+    role: brain
+    resource_type: project
+
+  - schema_version: 1
+    id: surf-brand-github-org
+    revision: 1
+    object_id: obj-example-brand
+    kind: github
+    role: identity
+    resource_type: organization
+    provider_identity:
+      id: "987654321"
+    locator:
+      login: example-studio
+
+  - schema_version: 1
+    id: surf-intel-chatgpt
+    revision: 1
+    object_id: obj-example-intel
+    kind: chatgpt
+    role: brain
+    resource_type: project
+
+  - schema_version: 1
+    id: surf-lab-workstation
+    revision: 1
+    object_id: obj-example-lab
+    kind: local
+    role: exec
+    resource_type: directory
+    machine_id: workstation
+
+  - schema_version: 1
+    id: surf-lab-laptop
+    revision: 1
+    object_id: obj-example-lab
+    kind: local
+    role: exec
+    resource_type: directory
+    machine_id: laptop
+
+relationships:
+  - schema_version: 1
+    id: rel-content-supports-brand
+    revision: 1
+    from_object_id: obj-example-content-system
+    type: supports
+    to_object_id: obj-example-brand
+
+  - schema_version: 1
+    id: rel-lab-uses-standard
+    revision: 1
+    from_object_id: obj-example-lab
+    type: uses_standard
+    to_object_id: obj-example-standard
+
+machines:
+  - schema_version: 1
+    id: workstation
+    revision: 1
+    name: Example Workstation
+    status: active
+    classes:
+      - heavy-dev
+      - data-analysis
+    ui:
+      local_project_color: blue
+
+  - schema_version: 1
+    id: laptop
+    revision: 1
+    name: Example Laptop
+    status: active
+    classes:
+      - portable
+      - writing
+    ui:
+      local_project_color: purple
+
+local_maps:
+  workstation:
+    schema_version: 1
+    revision: 1
+    machine_id: workstation
+    workspaces:
+      surf-repo-workstation:
+        path: "D:/Work/example-orchestrator"
+      surf-paper-workstation:
+        path: "E:/Research/example-demand-study"
+      surf-lab-workstation:
+        path: "D:/Labs/local-experiments"
+
+  laptop:
+    schema_version: 1
+    revision: 1
+    machine_id: laptop
+    workspaces:
+      surf-lab-laptop:
+        path: "E:/Labs/local-experiments"
+
+policy_exceptions:
+  - schema_version: 1
+    id: waiver-example-legacy-placement
+    revision: 1
+    rule_id: dedicated_workspace_for_long_lived_repo
+    target:
+      kind: surface
+      id: surf-repo-workstation
+    disposition: defer
+    reason: "Synthetic example: an active repository remains in a legacy location until a safe migration window."
+    created_at: "2026-01-01T00:00:00Z"
+    review:
+      mode: manual

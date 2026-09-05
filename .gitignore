@@ -1,0 +1,22 @@
+# Local machine state
+local-map.yaml
+*.local-map.yaml
+.workspace-governance/
+
+# Derived indexes and caches
+*.db
+*.sqlite
+*.sqlite3
+.cache/
+cache/
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Common local/editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
