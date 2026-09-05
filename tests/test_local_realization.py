@@ -12,7 +12,7 @@ import yaml
 
 from pwg.cli import main
 from pwg.discovery import discover_git_candidates
-from pwg.git_identity import canonicalize_github_remote
+from pwg.git_identity import GitInspectionError, canonicalize_github_remote, read_origin_remote
 from pwg.local_state import LocalStateError, add_trusted_root, bootstrap_local_state, set_mapping
 from pwg.reconcile import reconcile
 
@@ -334,6 +334,34 @@ class LocalRealizationTests(unittest.TestCase):
             self.assertEqual(len(findings), 1)
             self.assertEqual(findings[0]["classification"], "MATCH")
             self.assertEqual(findings[0]["declared"]["path"], str(workspace.resolve()))
+
+    def test_read_origin_remote_raises_for_non_git_directory(self) -> None:
+        # A path that is not inside a readable git worktree must be reported as
+        # unobservable (GitInspectionError), not silently treated as "no origin".
+        with tempfile.TemporaryDirectory() as tmp:
+            plain = Path(tmp) / "plain"
+            plain.mkdir()
+            with self.assertRaises(GitInspectionError):
+                read_origin_remote(plain)
+
+    def test_unreadable_git_mapping_is_unobservable_not_drift(self) -> None:
+        # A registered GitHub-backed local Surface whose mapped path exists but
+        # is not a readable git checkout must classify as UNOBSERVABLE, never as
+        # high-risk DRIFT/REVIEW_IDENTITY.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            registry = root / "registry"
+            home = root / "home"
+            plain = root / "plain-dir"
+            plain.mkdir()
+            make_registry(registry)
+            bootstrap_local_state(home, "pc-a", registry)
+            set_mapping(home, "surf-local", plain)
+
+            findings = reconcile(home)
+            target = next(item for item in findings if item.subject_id == "surf-local")
+            self.assertEqual(target.classification, "UNOBSERVABLE")
+            self.assertNotEqual(target.suggested_operation, "REVIEW_IDENTITY")
 
 
 if __name__ == "__main__":
