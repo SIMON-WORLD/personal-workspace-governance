@@ -8,7 +8,7 @@ This project defines a durable model for organizing and reconciling personal wor
 
 ## Status
 
-Architecture v0.2 is the current design baseline. It has been stress-tested against multi-machine, cloud-only, local-only, GitHub-backed, research, brand, system, lab, automation, migration, and capture scenarios. The repository is now moving from architecture dogfood into a reviewed specification phase.
+Architecture v0.2 is the current design baseline. Phase 2.1 adds the first executable local-realization toolkit: machine-local bootstrap, explicit path mapping, opt-in trusted roots, bounded Git metadata discovery, and read-only reconciliation. The implementation remains conservative by design: no whole-disk scan, automatic filesystem move, automatic registry write, or content indexing.
 
 ## Core model
 
@@ -35,6 +35,20 @@ The durable model is intentionally small:
 9. Relationships never imply destructive or lifecycle cascades.
 10. Reconciliation is conservative: observe, propose, validate, approve, apply, verify, record.
 
+## Local realization toolkit
+
+Phase 2.1 includes a small Python CLI named `pwg` for machine-local realization and read-only reconciliation.
+
+```bash
+python -m pip install -e .
+pwg bootstrap --machine-id pc-a --registry <path-to-private-registry>
+pwg map-set --surface-id <surface-id> --path <workspace-path>
+pwg trust-add --path <trusted-root> --max-depth 4
+pwg reconcile --trusted
+```
+
+Absolute paths stay in the machine-local governance home. See [`docs/local-realization.md`](docs/local-realization.md) for the operating model and safety boundaries.
+
 ## Privacy boundary
 
 This public repository contains only generic specifications, schemas, tooling, and synthetic examples. It must not contain personal registries, absolute personal filesystem paths, unpublished research ideas or materials, conversation exports, credentials, tokens, private capture content, or other sensitive personal data. See [PRIVACY.md](PRIVACY.md).
@@ -48,11 +62,14 @@ A real personal instance belongs in a separate private registry. Machine-local p
 - [`docs/architecture.md`](docs/architecture.md) — architecture and source-of-truth boundaries.
 - [`docs/lifecycle-and-registration.md`](docs/lifecycle-and-registration.md) — capture, registration, lifecycle, graduation, and retirement.
 - [`docs/chatgpt-ui-conventions.md`](docs/chatgpt-ui-conventions.md) — ChatGPT-specific Section, naming, icon, color, pin, chat-title, cloud/local, and machine-ID conventions.
+- [`docs/local-realization.md`](docs/local-realization.md) — Phase 2.1 machine-local bootstrap, mapping, discovery, and reconciliation.
 - [`profiles/chatgpt-default.yaml`](profiles/chatgpt-default.yaml) — machine-readable default ChatGPT UI projection profile.
 - [`docs/change-protocol.md`](docs/change-protocol.md) — safe structural mutation protocol.
 - [`docs/discovery-reconciliation.md`](docs/discovery-reconciliation.md) — discovery, identity matching, drift classification, and reconciliation.
 - [`adr/README.md`](adr/README.md) — accepted architecture decisions from the v0.2 design phase.
-- [`schemas/`](schemas/) — machine-readable schema contracts.
+- [`schemas/`](schemas/) — canonical and machine-local schema contracts.
+- [`src/pwg/`](src/pwg/) — local-realization reference toolkit.
+- [`tests/`](tests/) — cross-platform behavior tests.
 - [`examples/synthetic/`](examples/synthetic/) — synthetic examples only.
 
 ## Relationship to lower-level workspace standards
