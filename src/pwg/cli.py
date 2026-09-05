@@ -55,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "reconcile":
             findings = reconcile(home, args.registry, include_trusted=args.trusted)
             if args.as_json:
-                print(json.dumps([item.to_dict() for item in findings], ensure_ascii=False, indent=2))
+                print(json.dumps([item.to_dict() for item in findings], ensure_ascii=True, indent=2))
             else:
                 for item in findings:
                     operation = f" -> {item.suggested_operation}" if item.suggested_operation else ""
