@@ -1,10 +1,10 @@
 # Schemas
 
-These JSON Schema documents define the initial machine-readable contracts for Architecture v0.2.
+These JSON Schema documents define the initial machine-readable contracts for Architecture v0.2 and the Phase 2.1 machine-local realization layer.
 
 Current schema version: `1`.
 
-Files:
+Canonical / registry-facing schemas:
 
 - `workspace-object.schema.json`
 - `surface.schema.json`
@@ -13,6 +13,13 @@ Files:
 - `local-map.schema.json`
 - `policy-exception.schema.json`
 - `change-event.schema.json`
+
+Machine-local realization schemas:
+
+- `local-realization-config.schema.json`
+- `trusted-roots.schema.json`
+
+The latter describe local-only state. Their presence in this public repository defines structure; it does not mean actual machine config, trusted roots, or absolute paths belong in Git.
 
 ## Canonical text format
 
