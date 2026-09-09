@@ -20,3 +20,7 @@ cache/
 Thumbs.db
 .vscode/
 .idea/
+
+# Python test/runtime bytecode
+__pycache__/
+*.py[cod]

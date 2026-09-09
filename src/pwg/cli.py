@@ -60,6 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--trusted", action="store_true", help="Include explicit trusted-root discovery")
     status.add_argument("--json", action="store_true", dest="as_json")
 
+    for command in ("conversation-recover", "conversation-observe-desktop"):
+        conversation = sub.add_parser(command, help="Read-only machine-local conversation mission")
+        conversation.add_argument("--mission", required=True, help="Stable semantic purpose")
+        conversation.add_argument("--account", required=True, help="Explicit runtime account scope binding")
+        conversation.add_argument("--project", default=None)
+
     return parser
 
 
@@ -68,7 +74,23 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     home = _home(args.home)
     try:
-        if args.command == "bootstrap":
+        if args.command.startswith("conversation-"):
+            from .conversation_state import MissionStore
+            from .conversation_host import observe_desktop
+            from .conversations import Scope
+            from dataclasses import asdict
+            scope = Scope(args.account, args.project)
+            mission_home = home / "conversation-missions"
+            if args.command == "conversation-observe-desktop":
+                result = observe_desktop(mission_home, args.mission, scope)
+            else:
+                status, state = MissionStore(mission_home).recover(args.mission, asdict(scope))
+                result = {"recovery": status, "next_safe_action": "rediscover_then_refresh_read_only"}
+                if state:
+                    result.update(revision=state["revision"], summary=state["summary"],
+                                  historical_observation=True)
+            print(json.dumps(result, ensure_ascii=True, sort_keys=True))
+        elif args.command == "bootstrap":
             bootstrap_local_state(home, args.machine_id, args.registry)
             print(f"Initialized {home} for {args.machine_id}")
         elif args.command == "map-set":
