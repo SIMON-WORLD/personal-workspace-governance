@@ -27,7 +27,8 @@ The initial decisions below were extracted from repeated architecture dogfood ac
 | ADR-016 | Connector/tool capability is not a Surface unless the object itself exists on that platform. | Accepted |
 | ADR-017 | Hub inactivity is not sufficient evidence of retirement. | Accepted |
 | ADR-018 | Local Surface realization is explicit (git / directory / container) and may bind to one provider repository Surface. | Accepted |
+| ADR-019 | ChatGPT conversation reconciliation is provider-neutral, machine-local, and pointer-not-payload; ordinary chats remain internal resources rather than Workspace Objects. | Provisional |
 
 ## Notes
 
-Individual ADR files may be introduced when a decision needs deeper rationale, alternatives, or implementation consequences. Until then, this index plus `SPEC.md` and `docs/surface-realization-and-discovery.md` (Phase 2.2) is normative for the v0.2 baseline.
+Individual ADR files may be introduced when a decision needs deeper rationale, alternatives, or implementation consequences. Until then, this index plus `SPEC.md`, `docs/surface-realization-and-discovery.md` (Phase 2.2), and `docs/chatgpt-conversation-reconciliation.md` (Phase 2.3) records the current public architecture baseline.
