@@ -131,6 +131,8 @@ A `00` Brain should remain lightweight: current goal, accepted decisions, curren
 
 Ordinary temporary chats should normally remain unnumbered.
 
+Conversation titles are UI projection metadata, not authority. A title such as `00 · Brain · ...` does not itself grant Brain/Parent control, and renaming a conversation does not create, transfer, or retire logical authority. Large-scale title cleanup should follow the provider-neutral, machine-local reconciliation contract in [`chatgpt-conversation-reconciliation.md`](chatgpt-conversation-reconciliation.md) rather than registering ordinary chats as Workspace Objects.
+
 ## Cloud versus local
 
 Do not use `Web Project` versus `Desktop Project` as the conceptual distinction.
