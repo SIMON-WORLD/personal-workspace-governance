@@ -130,6 +130,14 @@ class C0Tests(unittest.TestCase):
         with self.assertRaises(ConversationError):
             make_evidence(state, discovery, preparation, chatgpt_write_requests=1)
 
+    def test_historical_evidence_remains_readable_after_capability_expiry(self):
+        state = synthetic_state(2)
+        discovery = discover_rename_route([StaticMutationProbe(surface("BLOCKED"))], "synthetic-session", SCOPE)
+        evidence = make_evidence(state, discovery,
+                                 prepare_exact_batch(state, discovery, mission=state["semantic"], scope=SCOPE))
+        evidence["observed_at"] = "2000-01-01T00:00:00+00:00"
+        validate_evidence(evidence)
+
     def test_local_store_rejects_repo_and_registry_roots_and_writes_batch_atomically(self):
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary) / "c0"

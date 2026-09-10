@@ -36,13 +36,20 @@ def _now() -> str:
 
 
 def _timestamp(value: str) -> None:
+    stamp = _historical_timestamp(value)
+    age = (datetime.now(timezone.utc) - stamp).total_seconds()
+    if not 0 <= age <= 300:
+        raise ConversationError("expired C0 capability observation")
+
+
+def _historical_timestamp(value: str) -> datetime:
     try:
         stamp = datetime.fromisoformat(value)
-        age = (datetime.now(timezone.utc) - stamp).total_seconds()
     except (TypeError, ValueError):
         raise ConversationError("invalid C0 observation timestamp") from None
-    if stamp.tzinfo is None or not 0 <= age <= 300:
-        raise ConversationError("expired C0 capability observation")
+    if stamp.tzinfo is None:
+        raise ConversationError("C0 timestamp must include timezone")
+    return stamp
 
 
 def _keys(value: object, expected: str) -> None:
@@ -324,7 +331,9 @@ def validate_evidence(evidence: dict) -> None:
         raise ConversationError("C0 privacy/write invariant failed")
     if type(evidence["c1_safe_to_authorize"]) is not bool:
         raise ConversationError("invalid C0 authorization state")
-    _timestamp(evidence["observed_at"])
+    # Historical evidence remains independently readable; capability freshness is
+    # enforced on MutationSurface discovery, immediately before any future C1 gate.
+    _historical_timestamp(evidence["observed_at"])
     if evidence["c1_safe_to_authorize"] != (evidence["batch_prepared"] == 3 and evidence["mutation_surface"] == "FOUND"):
         raise ConversationError("C0 authorization state inconsistent")
 
