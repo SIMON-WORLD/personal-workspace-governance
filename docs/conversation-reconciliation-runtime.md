@@ -157,17 +157,24 @@ incomplete capability maps fail closed.
 
 `prepare_exact_batch()` accepts only `RENAME_PROPOSED` items whose reason is a
 policy-backed high-confidence cleanup (`title_whitespace` or `context_rule`). It
-requires exactly three eligible proposals; fewer or more remains `BLOCKED` rather
-than selecting or replacing items silently. Each prepared item binds the provider
+auto-binds the whole pool only when exactly three proposals are eligible. Fewer
+remains `BLOCKED`; when more are eligible, Parent must pass an explicit selection of
+exactly three native IDs. The selection is sorted and frozen into the batch, with no
+substitution or expansion after preparation. Each prepared item binds the provider
 native ID, expected old title, target title, proposal revision, inventory generation,
 route, and a fresh execution generation. The exact batch is machine-local and its
 fingerprint is derived from the binding. Structural, generic, duplicate, stale, or
 ambiguous proposals never enter it.
 
-`C0Store` writes aggregate evidence separately from the exact batch, atomically, outside
-Git and the private Registry. Public evidence contains only route/capability states,
-counts, revisions, privacy status, and `chatgpt_write_requests=0`; the local batch is
-the only place exact IDs and titles can appear. C0 evidence is not C1 authorization:
-`c1_safe_to_authorize` is true only when a complete route and exactly three bound items
-both exist. A blocked route or missing candidate leaves the batch absent and requires
-Parent `AUTHORIZE C1` before any future write work.
+`C0Store` keeps aggregate evidence and the exact batch as one actionable authorization
+unit outside Git and the private Registry. The evidence records the batch fingerprint,
+proposal revision, inventory generation, and execution generation; recovery returns a
+batch only when every binding matches exactly. A prepared payload is written before
+its evidence and a failure between those writes removes the payload. A later blocked
+write revokes any older payload before publishing blocked evidence. Public evidence
+contains only route/capability states, counts, revisions, privacy status, and
+`chatgpt_write_requests=0`; the local batch is the only place exact IDs and titles can
+appear. C0 evidence is not C1 authorization: `c1_safe_to_authorize` is true only when
+a complete route and exactly three bound items both exist. A blocked route or missing
+candidate leaves the batch absent and requires Parent `AUTHORIZE C1` before any future
+write work.

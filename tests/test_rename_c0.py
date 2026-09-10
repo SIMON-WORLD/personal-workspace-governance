@@ -1,9 +1,12 @@
 """Synthetic Stage C0 tests; no real account identifiers or titles appear here."""
 from dataclasses import asdict
 from datetime import datetime, timezone
+import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from pwg.conversations import Scope, now
 from pwg.conversation_state import ConversationError
@@ -11,6 +14,7 @@ from pwg.rename_c0 import (
     C0Store,
     MutationSurface,
     StaticMutationProbe,
+    _batch_to_dict,
     discover_rename_route,
     make_evidence,
     prepare_exact_batch,
@@ -112,6 +116,14 @@ class C0Tests(unittest.TestCase):
             self.assertEqual(result.status, "BLOCKED")
             self.assertIsNone(result.batch)
             self.assertEqual(result.requested_size, 3)
+        selected = prepare_exact_batch(
+            synthetic_state(4), route, mission="synthetic-reconciliation", scope=SCOPE,
+            selected_ids=["synthetic-3", "synthetic-1", "synthetic-0"],
+            execution_generation="generation-selected",
+        )
+        self.assertEqual((selected.status, selected.eligible_count), ("PREPARED", 4))
+        self.assertEqual([item.conversation_id for item in selected.batch.items],
+                         ["synthetic-0", "synthetic-1", "synthetic-3"])
         blocked = discover_rename_route([StaticMutationProbe(surface("BLOCKED"))], "synthetic-session", SCOPE)
         result = prepare_exact_batch(synthetic_state(), blocked,
                                      mission="synthetic-reconciliation", scope=SCOPE)
@@ -146,12 +158,18 @@ class C0Tests(unittest.TestCase):
             prep = prepare_exact_batch(state, discovery, mission=state["semantic"], scope=SCOPE,
                                        execution_generation="generation-1")
             evidence = make_evidence(state, discovery, prep)
-            evidence_path, batch_path = C0Store(home, forbidden_roots=(Path(temporary) / "registry",)).write(evidence, prep.batch)
+            store = C0Store(home, forbidden_roots=(Path(temporary) / "registry",))
+            evidence_path, batch_path = store.write(evidence, prep.batch)
             self.assertTrue(evidence_path.exists())
             self.assertTrue(batch_path.exists())
             stored = batch_path.read_text(encoding="utf-8")
             self.assertIn("generation-1", stored)
             self.assertIn("synthetic-0", stored)
+            stored_evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+            self.assertEqual(stored_evidence["batch_binding"]["fingerprint"], prep.batch.fingerprint())
+            recovered_evidence, recovered_batch = store.recover(state["semantic"])
+            self.assertEqual(recovered_evidence["batch_binding"], evidence["batch_binding"])
+            self.assertEqual(recovered_batch.fingerprint(), prep.batch.fingerprint())
             repo = Path(temporary) / "repo"
             repo.mkdir()
             (repo / ".git").mkdir()
@@ -159,6 +177,73 @@ class C0Tests(unittest.TestCase):
                 C0Store(repo / "state")
             with self.assertRaises(ConversationError):
                 C0Store(Path(temporary) / "registry" / "state", forbidden_roots=(Path(temporary) / "registry",))
+
+    def test_prepared_to_blocked_revokes_old_actionable_batch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = C0Store(Path(temporary) / "c0")
+            state = synthetic_state(3)
+            found = discover_rename_route([StaticMutationProbe(surface())], "synthetic-session", SCOPE)
+            prepared = prepare_exact_batch(
+                state, found, mission=state["semantic"], scope=SCOPE,
+                execution_generation="generation-1",
+            )
+            store.write(make_evidence(state, found, prepared), prepared.batch)
+            blocked_state = synthetic_state(2)
+            blocked = discover_rename_route(
+                [StaticMutationProbe(surface("BLOCKED"))], "synthetic-session", SCOPE
+            )
+            blocked_evidence = make_evidence(
+                blocked_state, blocked,
+                prepare_exact_batch(blocked_state, blocked, mission=blocked_state["semantic"], scope=SCOPE),
+            )
+            evidence_path, batch_path = store.write(blocked_evidence)
+            self.assertTrue(evidence_path.exists())
+            self.assertIsNone(batch_path)
+            self.assertFalse(store._paths(state["semantic"])[1].exists())
+            recovered_evidence, recovered_batch = store.recover(state["semantic"])
+            self.assertEqual(recovered_evidence["batch_prepared"], 0)
+            self.assertIsNone(recovered_batch)
+
+    def test_recovery_rejects_mismatched_binding_and_partial_prepared_write(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = C0Store(Path(temporary) / "c0")
+            state = synthetic_state(3)
+            found = discover_rename_route([StaticMutationProbe(surface())], "synthetic-session", SCOPE)
+            first = prepare_exact_batch(
+                state, found, mission=state["semantic"], scope=SCOPE,
+                execution_generation="generation-1",
+            )
+            first_evidence = make_evidence(state, found, first)
+            evidence_path, batch_path = store.write(first_evidence, first.batch)
+            second = prepare_exact_batch(
+                state, found, mission=state["semantic"], scope=SCOPE,
+                execution_generation="generation-2",
+            )
+            batch_path.write_text(json.dumps(_batch_to_dict(second.batch)), encoding="utf-8")
+            recovered_evidence, recovered_batch = store.recover(state["semantic"])
+            self.assertEqual(recovered_evidence["batch_binding"], first_evidence["batch_binding"])
+            self.assertIsNone(recovered_batch)
+            store.write(first_evidence, first.batch)
+
+            replace_calls = 0
+            real_replace = os.replace
+
+            def fail_second_replace(source, destination):
+                nonlocal replace_calls
+                replace_calls += 1
+                if replace_calls == 2:
+                    raise OSError("synthetic evidence replacement failure")
+                return real_replace(source, destination)
+
+            with patch("pwg.rename_c0.os.replace", side_effect=fail_second_replace):
+                with self.assertRaises(OSError):
+                    store.write(make_evidence(state, found, second), second.batch)
+            self.assertEqual(replace_calls, 2)
+            self.assertFalse(batch_path.exists())
+            recovered_evidence, recovered_batch = store.recover(state["semantic"])
+            self.assertEqual(recovered_evidence["batch_binding"], first_evidence["batch_binding"])
+            self.assertIsNone(recovered_batch)
+            self.assertTrue(evidence_path.exists())
 
     def test_batch_rejects_structural_or_ambiguous_proposals(self):
         state = synthetic_state()

@@ -199,6 +199,55 @@ class ExactRenameBatch:
         return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=True).encode()).hexdigest()
 
 
+def _batch_to_dict(batch: ExactRenameBatch) -> dict:
+    return {
+        "schema_version": 1,
+        "stage": "C0",
+        "mission": batch.mission,
+        "scope": asdict(batch.scope),
+        "proposal_revision": batch.proposal_revision,
+        "inventory_generation": batch.inventory_generation,
+        "provider": batch.provider,
+        "route": batch.route,
+        "execution_generation": batch.execution_generation,
+        "items": [asdict(item) for item in batch.items],
+        "fingerprint": batch.fingerprint(),
+    }
+
+
+def _batch_from_dict(value: object) -> ExactRenameBatch:
+    _keys(value, "schema_version stage mission scope proposal_revision inventory_generation "
+          "provider route execution_generation items fingerprint")
+    if value["schema_version"] != 1 or value["stage"] != "C0":
+        raise ConversationError("unsupported C0 batch")
+    _keys(value["scope"], "account project")
+    scope = Scope(value["scope"]["account"], value["scope"]["project"])
+    if not isinstance(value["items"], list) or len(value["items"]) != 3:
+        raise ConversationError("C0 batch item count rejected")
+    items = []
+    for item in value["items"]:
+        _keys(item, "conversation_id expected_old_title target_title")
+        items.append(ExactRenameItem(**item))
+    batch = ExactRenameBatch(
+        value["mission"], scope, value["proposal_revision"], value["inventory_generation"],
+        value["provider"], value["route"], value["execution_generation"], tuple(items),
+    )
+    if value["fingerprint"] != batch.fingerprint():
+        raise ConversationError("C0 batch fingerprint mismatch")
+    return batch
+
+
+def _batch_binding(batch: ExactRenameBatch | None) -> dict | None:
+    if batch is None:
+        return None
+    return {
+        "fingerprint": batch.fingerprint(),
+        "proposal_revision": batch.proposal_revision,
+        "inventory_generation": batch.inventory_generation,
+        "execution_generation": batch.execution_generation,
+    }
+
+
 @dataclass(frozen=True)
 class BatchPreparation:
     requested_size: int
@@ -226,8 +275,9 @@ def prepare_exact_batch(
     mission: str,
     scope: Scope,
     execution_generation: str | None = None,
+    selected_ids: list[str] | tuple[str, ...] | None = None,
 ) -> BatchPreparation:
-    """Bind exactly three high-confidence proposals, or fail closed without guessing."""
+    """Bind an explicit exact-three selection, or fail closed without guessing."""
     validate_reconciliation_state(reconciliation_state)
     if reconciliation_state["semantic"] != mission:
         raise ConversationError("C0 mission does not match reconciliation checkpoint")
@@ -241,19 +291,37 @@ def prepare_exact_batch(
             continue
         metadata = proposal["metadata"]
         eligible.append(ExactRenameItem(metadata["id"], metadata["title"], proposal["proposed_title"]))
-    if len(eligible) != 3:
-        return BatchPreparation(3, len(eligible), "BLOCKED", None,
-                                "C0 requires exactly three high-confidence proposals; no guessing or substitution")
+    eligible_by_id = {item.conversation_id: item for item in eligible}
+    if selected_ids is None:
+        if len(eligible) != 3:
+            reason = (
+                "C0 has fewer than three eligible proposals; no substitution"
+                if len(eligible) < 3 else
+                "C0 has more than three eligible proposals; explicit three-ID selection is required"
+            )
+            return BatchPreparation(3, len(eligible), "BLOCKED", None, reason)
+        selected = eligible
+    else:
+        valid_shape = isinstance(selected_ids, (list, tuple)) and len(selected_ids) == 3
+        valid_values = valid_shape and all(
+            isinstance(value, str) and bool(value) for value in selected_ids
+        )
+        if (not valid_shape or not valid_values
+                or len(set(selected_ids)) != 3
+                or any(value not in eligible_by_id for value in selected_ids)):
+            return BatchPreparation(3, len(eligible), "BLOCKED", None,
+                                    "C0 explicit selection must contain exactly three eligible identities")
+        selected = [eligible_by_id[value] for value in selected_ids]
     if discovery.status != "FOUND" or discovery.selected is None:
-        return BatchPreparation(3, 3, "BLOCKED", None,
-                                "C0 has three candidates but no usable current exact rename route")
+        return BatchPreparation(3, len(eligible), "BLOCKED", None,
+                                "C0 has a bounded selection but no usable current exact rename route")
     generation = execution_generation or str(uuid.uuid4())
     batch = ExactRenameBatch(
         mission, scope, reconciliation_state["proposal_revision"],
         reconciliation_state["inventory_generation"], discovery.selected.provider,
-        discovery.selected.route, generation, tuple(sorted(eligible, key=lambda item: item.conversation_id)),
+        discovery.selected.route, generation, tuple(sorted(selected, key=lambda item: item.conversation_id)),
     )
-    return BatchPreparation(3, 3, "PREPARED", batch, "exact high-confidence batch bound locally")
+    return BatchPreparation(3, len(eligible), "PREPARED", batch, "exact high-confidence batch bound locally")
 
 
 def make_evidence(
@@ -290,6 +358,7 @@ def make_evidence(
         "batch_requested": 3,
         "batch_eligible": preparation.eligible_count,
         "batch_prepared": 3 if preparation.batch else 0,
+        "batch_binding": _batch_binding(preparation.batch),
         "confidence_class": "HIGH_CONFIDENCE_ONLY",
         "privacy_check": privacy_check,
         "chatgpt_write_requests": chatgpt_write_requests,
@@ -304,8 +373,8 @@ def make_evidence(
 def validate_evidence(evidence: dict) -> None:
     _keys(evidence, "schema_version stage mission scope proposal_revision inventory_generation "
           "mutation_surface route_provider route capabilities route_candidates batch_requested "
-          "batch_eligible batch_prepared confidence_class privacy_check chatgpt_write_requests "
-          "c1_safe_to_authorize blocker observed_at")
+          "batch_eligible batch_prepared batch_binding confidence_class privacy_check "
+          "chatgpt_write_requests c1_safe_to_authorize blocker observed_at")
     if evidence["schema_version"] != 1 or evidence["stage"] != "C0":
         raise ConversationError("unsupported C0 evidence")
     bounded_text(evidence["mission"], 200)
@@ -321,6 +390,25 @@ def validate_evidence(evidence: dict) -> None:
         raise ConversationError("invalid C0 batch size")
     if evidence["batch_eligible"] < evidence["batch_prepared"]:
         raise ConversationError("C0 candidate count invariant failed")
+    if evidence["batch_prepared"] == 0:
+        if evidence["batch_binding"] is not None:
+            raise ConversationError("blocked C0 evidence cannot reference a batch")
+    else:
+        _keys(evidence["batch_binding"],
+              "fingerprint proposal_revision inventory_generation execution_generation")
+        bounded_text(evidence["batch_binding"]["fingerprint"], 64)
+        if (len(evidence["batch_binding"]["fingerprint"]) != 64
+                or any(char not in "0123456789abcdef" for char in evidence["batch_binding"]["fingerprint"])):
+            raise ConversationError("invalid C0 batch fingerprint")
+        for key in ("proposal_revision", "inventory_generation"):
+            if (type(evidence["batch_binding"][key]) is not int
+                    or evidence["batch_binding"][key] < 1):
+                raise ConversationError("invalid C0 batch binding revision")
+        bounded_text(evidence["batch_binding"]["execution_generation"], 80)
+        if evidence["batch_binding"]["proposal_revision"] != evidence["proposal_revision"]:
+            raise ConversationError("C0 batch proposal revision mismatch")
+        if evidence["batch_binding"]["inventory_generation"] != evidence["inventory_generation"]:
+            raise ConversationError("C0 batch inventory generation mismatch")
     if evidence["mutation_surface"] not in ROUTE_STATUSES:
         raise ConversationError("invalid C0 mutation surface")
     if set(evidence["capabilities"]) != set(RENAME_CAPABILITIES):
@@ -334,12 +422,21 @@ def validate_evidence(evidence: dict) -> None:
     # Historical evidence remains independently readable; capability freshness is
     # enforced on MutationSurface discovery, immediately before any future C1 gate.
     _historical_timestamp(evidence["observed_at"])
-    if evidence["c1_safe_to_authorize"] != (evidence["batch_prepared"] == 3 and evidence["mutation_surface"] == "FOUND"):
+    if evidence["c1_safe_to_authorize"] != (
+        evidence["batch_prepared"] == 3 and evidence["mutation_surface"] == "FOUND"
+        and evidence["batch_binding"] is not None
+    ):
         raise ConversationError("C0 authorization state inconsistent")
 
 
 class C0Store:
-    """Atomic machine-local evidence/batch store outside Git and Registry roots."""
+    """Machine-local evidence/batch store with one actionable authorization unit.
+
+    A prepared batch is written before its evidence. Recovery only treats it as
+    actionable when the evidence binding exactly matches the batch fingerprint,
+    revisions, and execution generation. A blocked write removes any prior batch
+    before publishing blocked evidence.
+    """
 
     def __init__(self, home: str | Path, *, forbidden_roots: tuple[str | Path, ...] = ()):
         self.home = Path(home).expanduser().resolve()
@@ -357,28 +454,61 @@ class C0Store:
         if batch is not None:
             if not evidence["c1_safe_to_authorize"]:
                 raise ConversationError("cannot store an unsafe prepared batch")
-            if batch.mission != evidence["mission"] or batch.proposal_revision != evidence["proposal_revision"]:
+            if (batch.mission != evidence["mission"]
+                    or batch.proposal_revision != evidence["proposal_revision"]
+                    or batch.inventory_generation != evidence["inventory_generation"]
+                    or evidence["batch_binding"] != _batch_binding(batch)):
                 raise ConversationError("C0 batch binding mismatch")
         self.home.mkdir(parents=True, exist_ok=True)
-        stem = hashlib.sha256(evidence["mission"].encode()).hexdigest()[:24]
-        evidence_path = self.home / f"{stem}-c0-evidence.json"
-        batch_path = self.home / f"{stem}-c0-batch.json" if batch else None
-        self._atomic(evidence_path, evidence)
-        if batch:
-            self._atomic(batch_path, {
-                "schema_version": 1,
-                "stage": "C0",
-                "mission": batch.mission,
-                "scope": asdict(batch.scope),
-                "proposal_revision": batch.proposal_revision,
-                "inventory_generation": batch.inventory_generation,
-                "provider": batch.provider,
-                "route": batch.route,
-                "execution_generation": batch.execution_generation,
-                "items": [asdict(item) for item in batch.items],
-                "fingerprint": batch.fingerprint(),
-            })
+        evidence_path, batch_path = self._paths(evidence["mission"])
+        if batch is None:
+            # A blocked run revokes local actionability before its aggregate evidence
+            # is published. If the evidence write fails, recovery still sees no batch.
+            batch_path.unlink(missing_ok=True)
+            self._atomic(evidence_path, evidence)
+            return evidence_path, None
+
+        # Write the exact payload first. If evidence replacement fails, remove the
+        # payload; an older evidence file can then only fail closed on recovery.
+        self._atomic(batch_path, _batch_to_dict(batch))
+        try:
+            self._atomic(evidence_path, evidence)
+        except Exception:
+            batch_path.unlink(missing_ok=True)
+            raise
         return evidence_path, batch_path
+
+    def recover(self, mission: str) -> tuple[dict | None, ExactRenameBatch | None]:
+        """Read history and return an actionable batch only on exact binding match."""
+        evidence_path, batch_path = self._paths(mission)
+        if not evidence_path.exists():
+            return None, None
+        try:
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+            validate_evidence(evidence)
+        except Exception:
+            raise ConversationError("invalid C0 evidence; recovery fails closed") from None
+        if evidence["batch_prepared"] == 0 or not evidence["c1_safe_to_authorize"]:
+            return evidence, None
+        if not batch_path.exists():
+            return evidence, None
+        try:
+            batch = _batch_from_dict(json.loads(batch_path.read_text(encoding="utf-8")))
+        except Exception:
+            return evidence, None
+        binding = evidence["batch_binding"]
+        if (batch.mission != evidence["mission"]
+                or batch.proposal_revision != evidence["proposal_revision"]
+                or batch.inventory_generation != evidence["inventory_generation"]
+                or binding != _batch_binding(batch)):
+            return evidence, None
+        return evidence, batch
+
+    def _paths(self, mission: str) -> tuple[Path, Path]:
+        bounded_text(mission, 200)
+        stem = hashlib.sha256(mission.encode()).hexdigest()[:24]
+        return (self.home / f"{stem}-c0-evidence.json",
+                self.home / f"{stem}-c0-batch.json")
 
     @staticmethod
     def _atomic(path: Path, value: dict) -> None:
