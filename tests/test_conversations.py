@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from pwg.conversations import (Capabilities, ConversationError, Metadata, Page, Scope,
                                READ_CAPABILITIES, RenameBoundary, TitlePolicy, inventory, now, route)
-from pwg.conversation_providers import DesktopReadProvider
+from pwg.conversation_providers import DesktopReadProvider, EphemeralContextReadProvider
 from pwg.conversation_state import MissionStore, validate
 from pwg.conversation_host import observe_desktop
 
@@ -193,6 +193,74 @@ class ProposalTests(unittest.TestCase):
         self.assertEqual(result.context_reads, 1)
         self.assertNotIn("private snippet", json.dumps(asdict(result)))
         self.assertEqual(run(provider, policy=policy).context_reads, 0)
+
+    def test_explicit_ephemeral_context_adapter_restores_proposals_without_retaining_text(self):
+        observations = dict.fromkeys(READ_CAPABILITIES, "OBSERVABLE")
+        observations["conversation.read_minimal_context"] = "UNOBSERVABLE"
+        base = Provider({(False, None): Page((Metadata("a", "New chat"),), SCOPE, exhausted=True),
+                         (True, None): Page((), SCOPE, exhausted=True)}, observations=observations)
+        calls = []
+
+        def read_context(conversation_id, max_chars):
+            calls.append((conversation_id, max_chars))
+            return "private snippet: garden seedlings"
+
+        provider = EphemeralContextReadProvider(
+            base, read_context, bound_scope=SCOPE, ephemeral_context=True
+        )
+        policy = TitlePolicy(((('garden', 'seedlings'), 'Garden seedling study'),))
+        result = run(provider, policy=policy, context_budget=1)
+        self.assertEqual(result.capabilities.provider, "ephemeral-context")
+        self.assertEqual(result.capabilities.reads["conversation.read_minimal_context"], "OBSERVABLE")
+        self.assertEqual(result.proposals[0].proposed_title, "Garden seedling study")
+        self.assertEqual(result.proposals[0].reason, "context_rule")
+        self.assertEqual((result.context_reads, calls), (1, [("a", 1200)]))
+        self.assertNotIn("private snippet", json.dumps(asdict(result)))
+
+    def test_context_adapter_without_attestation_remains_unobservable_and_does_not_call_host(self):
+        observations = dict.fromkeys(READ_CAPABILITIES, "OBSERVABLE")
+        calls = []
+
+        def read_context(*_):
+            calls.append("called")
+            return "garden seedlings"
+
+        provider = EphemeralContextReadProvider(
+            Provider({(False, None): Page((Metadata("a", "New chat"),), SCOPE, exhausted=True),
+                      (True, None): Page((), SCOPE, exhausted=True)}, observations=observations),
+            read_context, bound_scope=SCOPE, ephemeral_context=False
+        )
+        policy = TitlePolicy(((('garden', 'seedlings'), 'Garden seedling study'),))
+        result = run(provider, policy=policy, context_budget=1)
+        self.assertEqual(result.capabilities.reads["conversation.read_minimal_context"], "UNOBSERVABLE")
+        self.assertEqual((result.proposals[0].status, result.context_reads, calls),
+                         ("NEEDS_DECISION", 0, []))
+        with self.assertRaises(ConversationError):
+            provider.minimal_context("a", 1200)
+
+    def test_context_adapter_bounds_and_suppresses_provider_payload(self):
+        observations = dict.fromkeys(READ_CAPABILITIES, "OBSERVABLE")
+        provider = EphemeralContextReadProvider(
+            Provider(observations=observations),
+            lambda *_: "x" * 1300,
+            bound_scope=SCOPE,
+            ephemeral_context=True,
+        )
+        for conversation_id, max_chars in [("", 1200), ("a", 0), ("a", 1201)]:
+            with self.assertRaises(ConversationError):
+                provider.minimal_context(conversation_id, max_chars)
+        with self.assertRaisesRegex(ConversationError, "invalid ephemeral minimal context"):
+            provider.minimal_context("a", 1200)
+
+        failing = EphemeralContextReadProvider(
+            Provider(observations=observations),
+            lambda *_: (_ for _ in ()).throw(RuntimeError("secret context payload")),
+            bound_scope=SCOPE,
+            ephemeral_context=True,
+        )
+        with self.assertRaisesRegex(ConversationError, "invalid ephemeral minimal context") as caught:
+            failing.minimal_context("a", 1200)
+        self.assertNotIn("secret", str(caught.exception))
 
     def test_multiple_context_matches_abstain_and_no_write_skeleton(self):
         policy = TitlePolicy(((('garden',), 'Garden study'), (('seedlings',), 'Seedling study')))
