@@ -133,6 +133,32 @@ Ordinary temporary chats should normally remain unnumbered.
 
 Conversation titles are UI projection metadata, not authority. A title such as `00 · Brain · ...` does not itself grant Brain/Parent control, and renaming a conversation does not create, transfer, or retire logical authority. Large-scale title cleanup should follow the provider-neutral, machine-local reconciliation contract in [`chatgpt-conversation-reconciliation.md`](chatgpt-conversation-reconciliation.md) rather than registering ordinary chats as Workspace Objects.
 
+### Durable Brain generation discoverability
+
+For a durable Brain role that has actually crossed a real replacement/takeover boundary, the human-facing conversation title may add a lightweight generation suffix:
+
+```text
+00 · Brain · <Stable Name> · G01 · ACTIVE
+00 · Brain · <Stable Name> · G01 · RETIRED
+00 · Brain · <Stable Name> · G02 · ACTIVE
+```
+
+This convention is opt-in and evidence-driven. Do not manufacture `G01/G02/...` for ordinary structural threads, temporary reviewers, investigation chats, or a Brain that has never needed replacement. Generation numbering begins when the convention is adopted for that durable Brain; it does not attempt to reconstruct historical replacement count.
+
+`ACTIVE` / `RETIRED` are human-facing discoverability labels only. They are not Workspace Object lifecycle values, do not belong in the Registry, and never grant or revoke authority by themselves. Current authority and fencing continue to come from this project's own durable governance and continuity rules. If title mutation is unavailable, stale, or unsafe, correctness must not depend on updating the title.
+
+A superseded generation may be renamed `RETIRED` and archived when convenient, but neither rename nor archive is part of the takeover correctness path. At most one generation should be presented as current `ACTIVE` for a durable Brain once takeover has been durably committed.
+
+### No Human Relay and Act-or-Escalate
+
+Human-facing session continuity should reduce, not create, maintenance work for the user.
+
+When current connected capabilities can reacquire durable evidence or write a durable handoff directly, the user should not be asked to copy full review reports, CI dumps, PR diffs, transcripts, internal run IDs, batch IDs, or other machine payloads between ChatGPT conversations. Fallback human relay should be the smallest sufficient `verdict / material delta / durable evidence pointer`.
+
+Likewise, an already-authorized bounded outcome should not incur a repeated "continue" tax. If the current Brain or executor has the required capability and remains inside the existing scope, acceptance criteria, privacy boundary, and mutation authority, it should continue through the next safe operation and verification step. It should stop only at a real authority boundary, capability boundary, ambiguity, safety/privacy risk, or a decision that changes scope or acceptance.
+
+This is an interaction-efficiency rule, not expanded authority. "Act or escalate" means: perform the next already-authorized safe action when possible; otherwise surface the exact blocker or decision needed from the Human Principal.
+
 ## Cloud versus local
 
 Do not use `Web Project` versus `Desktop Project` as the conceptual distinction.
