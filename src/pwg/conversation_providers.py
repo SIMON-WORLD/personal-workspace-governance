@@ -10,6 +10,10 @@ from typing import Callable
 
 from .conversations import (Capabilities, ConversationError, Metadata, Page,
                             READ_CAPABILITIES, Scope, now)
+from .rename_c0 import MutationSurface, RENAME_CAPABILITIES
+
+
+_RENAME_CAPABILITY_STATES = {"OBSERVABLE", "PARTIAL", "UNOBSERVABLE", "UNAVAILABLE"}
 
 
 class DesktopReadProvider:
@@ -56,3 +60,47 @@ class DesktopReadProvider:
 
     def minimal_context(self, conversation_id: str, max_chars: int) -> str:
         raise ConversationError("ephemeral minimal context unavailable on Desktop transport")
+
+
+class DesktopRenameSurfaceProbe:
+    """Translate explicit host capability facts without exposing a write callback.
+
+    The host must provide facts observed for the current session; this adapter never
+    probes by attempting a rename. An omitted fact stays ``UNOBSERVABLE`` so a
+    partial native tool surface cannot be mistaken for a safe exact canary route.
+    """
+
+    def __init__(
+        self,
+        capabilities: dict[str, str],
+        *,
+        bound_scope: Scope,
+        provider: str = "desktop-native",
+        route: str = "codex-app-native",
+        reason: str | None = None,
+    ):
+        unknown = set(capabilities) - set(RENAME_CAPABILITIES)
+        if unknown or not set(capabilities.values()) <= _RENAME_CAPABILITY_STATES:
+            raise ConversationError("invalid Desktop rename capability declaration")
+        self._capabilities = dict(capabilities)
+        self._scope = bound_scope
+        self._provider = provider
+        self._route = route
+        self._reason = reason
+
+    def discover_rename(self, session: str, scope: Scope) -> MutationSurface:
+        if scope != self._scope:
+            raise ConversationError("Desktop rename surface scope mismatch")
+        capabilities = {
+            name: self._capabilities.get(name, "UNOBSERVABLE")
+            for name in RENAME_CAPABILITIES
+        }
+        status = "FOUND" if all(value == "OBSERVABLE" for value in capabilities.values()) else "BLOCKED"
+        reason = self._reason or (
+            "host-declared exact rename surface satisfies identity, precondition and verification facts"
+            if status == "FOUND" else
+            "current Desktop tools do not expose every exact rename and verification fact"
+        )
+        return MutationSurface(
+            self._provider, self._route, session, now(), capabilities, status, reason
+        )
