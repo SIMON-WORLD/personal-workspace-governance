@@ -144,3 +144,37 @@ abstention and fixed context rules, recursive privacy validation, process replac
 semantic ambiguity, revision checks and repository exclusion. Existing Phase 2.1/2.2
 tests remain part of the same suite. Real dogfood evidence stays machine-local;
 publish only bounded counts and named capability boundaries with the exact PR head.
+
+## Stage C0 rename canary boundary
+
+`pwg.rename_c0` is the narrow preparation layer for the first real canary. A
+`MutationProbe` exposes only `discover_rename(session, scope)`; it has no rename
+callback. The returned surface must report all four facts as `OBSERVABLE` before
+the route can be `FOUND`: `conversation.rename`, exact metadata reacquisition,
+title verification, and non-target verification. Provider exceptions are discarded
+from evidence. Stale observations (older than five minutes), wrong sessions, and
+incomplete capability maps fail closed.
+
+`prepare_exact_batch()` accepts only `RENAME_PROPOSED` items whose reason is a
+policy-backed high-confidence cleanup (`title_whitespace` or `context_rule`). It
+auto-binds the whole pool only when exactly three proposals are eligible. Fewer
+remains `BLOCKED`; when more are eligible, Parent must pass an explicit selection of
+exactly three native IDs. The selection is sorted and frozen into the batch, with no
+substitution or expansion after preparation. Each prepared item binds the provider
+native ID, expected old title, target title, proposal revision, inventory generation,
+route, and a fresh execution generation. The exact batch is machine-local and its
+fingerprint is derived from the binding. Structural, generic, duplicate, stale, or
+ambiguous proposals never enter it.
+
+`C0Store` keeps aggregate evidence and the exact batch as one actionable authorization
+unit outside Git and the private Registry. The evidence records the batch fingerprint,
+proposal revision, inventory generation, and execution generation; recovery returns a
+batch only when every binding matches exactly. A prepared payload is written before
+its evidence and a failure between those writes removes the payload. A later blocked
+write revokes any older payload before publishing blocked evidence. Public evidence
+contains only route/capability states, counts, revisions, privacy status, and
+`chatgpt_write_requests=0`; the local batch is the only place exact IDs and titles can
+appear. C0 evidence is not C1 authorization: `c1_safe_to_authorize` is true only when
+a complete route and exactly three bound items both exist. A blocked route or missing
+candidate leaves the batch absent and requires Parent `AUTHORIZE C1` before any future
+write work.
