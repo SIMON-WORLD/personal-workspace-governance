@@ -6,7 +6,7 @@ This note records the bounded governance decision to adopt only the human-facing
 
 Accepted:
 
-- optional human-facing durable Brain generation labels such as `G01 · ACTIVE` / `G01 · RETIRED` after a real replacement boundary;
+- optional human-facing durable Brain generation labels: `G01 · ACTIVE` may be assigned at convention adoption; `G02+` and corresponding `RETIRED` transitions require a real committed replacement/takeover boundary;
 - `ACTIVE` / `RETIRED` as discoverability metadata only, never authority or Workspace Object lifecycle;
 - No Human Relay when current connected capabilities can reacquire or persist durable evidence directly;
 - Act-or-Escalate / no repeated Continue Tax inside an already-authorized bounded outcome.
