@@ -135,7 +135,7 @@ Conversation titles are UI projection metadata, not authority. A title such as `
 
 ### Durable Brain generation discoverability
 
-For a durable Brain role that has actually crossed a real replacement/takeover boundary, the human-facing conversation title may add a lightweight generation suffix:
+For a durable Brain role adopting this convention, the human-facing conversation title may add a lightweight generation suffix. The existing current session may be labeled `G01 · ACTIVE` immediately upon adoption; a subsequent `G02+` requires a real, durably committed replacement/takeover boundary:
 
 ```text
 00 · Brain · <Stable Name> · G01 · ACTIVE
@@ -143,7 +143,7 @@ For a durable Brain role that has actually crossed a real replacement/takeover b
 00 · Brain · <Stable Name> · G02 · ACTIVE
 ```
 
-This convention is opt-in and evidence-driven. Do not manufacture `G01/G02/...` for ordinary structural threads, temporary reviewers, investigation chats, or a Brain that has never needed replacement. Generation numbering begins when the convention is adopted for that durable Brain; it does not attempt to reconstruct historical replacement count.
+This convention is opt-in and evidence-driven. Do not assign generations to ordinary structural threads, temporary reviewers, or investigation chats. `G01` names the first generation after adoption, whether or not it has been replaced before; do not manufacture `G02` or later generations without an actual successful takeover. Historical replacements before adoption are not retrospectively counted.
 
 `ACTIVE` / `RETIRED` are human-facing discoverability labels only. They are not Workspace Object lifecycle values, do not belong in the Registry, and never grant or revoke authority by themselves. Current authority and fencing continue to come from this project's own durable governance and continuity rules. If title mutation is unavailable, stale, or unsafe, correctness must not depend on updating the title.
 
