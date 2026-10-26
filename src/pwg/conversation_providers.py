@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Callable
 
 from .conversations import (Capabilities, ConversationError, Metadata, Page,
-                            READ_CAPABILITIES, Scope, now)
+                            READ_CAPABILITIES, ReadProvider, Scope, bounded_text, now)
 
 
 class DesktopReadProvider:
@@ -56,3 +56,66 @@ class DesktopReadProvider:
 
     def minimal_context(self, conversation_id: str, max_chars: int) -> str:
         raise ConversationError("ephemeral minimal context unavailable on Desktop transport")
+
+
+class EphemeralContextReadProvider:
+    """Add an explicitly attested, bounded context reader to a read provider.
+
+    The host must set ``ephemeral_context=True`` only when the callback reads the
+    current session without writing source content to a transcript, log or
+    checkpoint. The adapter validates the bounded call and result, retains neither,
+    and never exposes a mutation callback. Without that attestation the capability
+    is forced back to ``UNOBSERVABLE`` even if the wrapped provider overclaims it.
+    """
+
+    _MAX_CONTEXT_CHARS = 1_200
+
+    def __init__(
+        self,
+        base: ReadProvider,
+        read_context: Callable,
+        *,
+        bound_scope: Scope,
+        ephemeral_context: bool,
+        provider: str = "ephemeral-context",
+    ):
+        if not callable(read_context) or type(ephemeral_context) is not bool:
+            raise ConversationError("invalid ephemeral context adapter")
+        self._base = base
+        self._read_context = read_context
+        self._scope = bound_scope
+        self._ephemeral = ephemeral_context
+        self._provider = provider
+
+    def discover(self, session: str, scope: Scope) -> Capabilities:
+        if scope != self._scope:
+            raise ConversationError("ephemeral context scope mismatch")
+        try:
+            base_cap = self._base.discover(session, scope)
+        except Exception:
+            raise ConversationError("wrapped read provider unavailable") from None
+        if base_cap.session != session or base_cap.scope != scope:
+            raise ConversationError("wrapped read provider scope mismatch")
+        reads = dict(base_cap.reads)
+        reads["conversation.read_minimal_context"] = (
+            "OBSERVABLE" if self._ephemeral else "UNOBSERVABLE"
+        )
+        return Capabilities(self._provider, session, scope, base_cap.observed_at, reads)
+
+    def list_page(self, scope: Scope, archive: bool, cursor: str | None) -> Page:
+        if scope != self._scope:
+            raise ConversationError("ephemeral context scope mismatch")
+        return self._base.list_page(scope, archive, cursor)
+
+    def minimal_context(self, conversation_id: str, max_chars: int) -> str:
+        if not self._ephemeral:
+            raise ConversationError("ephemeral minimal context is not attested")
+        try:
+            bounded_text(conversation_id, 200)
+            if type(max_chars) is not int or not 1 <= max_chars <= self._MAX_CONTEXT_CHARS:
+                raise ValueError()
+            value = self._read_context(conversation_id, max_chars)
+            return bounded_text(value, max_chars, empty=True)
+        except Exception:
+            # Do not let provider errors or source content cross the adapter boundary.
+            raise ConversationError("invalid ephemeral minimal context") from None

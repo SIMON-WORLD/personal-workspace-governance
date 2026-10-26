@@ -137,6 +137,18 @@ disabled by default. Zero or multiple matches abstain. Text is never copied into
 proposal; target collisions also abstain. The Desktop adapter does not enable this
 route because its host output cannot promise ephemeral context.
 
+`EphemeralContextReadProvider` is the narrow opt-in bridge for a host that can make
+that promise. The host must explicitly attest `ephemeral_context=True`; the adapter
+then advertises `conversation.read_minimal_context` as `OBSERVABLE`, validates the
+conversation ID, 1,200-character bound and returned text, and drops the text when
+the call returns. Without the attestation it forces the capability to
+`UNOBSERVABLE` and never calls the supplied reader. The host remains responsible for
+keeping source text out of its own transcript and logs. Current PC-B native and
+browser surfaces do not expose a programmatic ephemeral callback that can be bound
+to this adapter; rendered browser messages are not treated as that contract. The
+current proposal pool therefore remains read-only and context-assisted rows remain
+ungenerated.
+
 Run `python -m unittest discover -s tests -v` with `PYTHONPATH=src`, followed by
 `python scripts/validate.py`. Synthetic tests cover routing and freshness, both list
 partitions, exhaustion/cursor/scope/error boundaries, deduplication/conflicts, proposal
