@@ -13,9 +13,10 @@ from unittest.mock import patch
 
 from pwg.conversations import (Capabilities, ConversationError, Metadata, Page, Scope,
                                READ_CAPABILITIES, RenameBoundary, TitlePolicy, inventory, now, route)
-from pwg.conversation_providers import DesktopReadProvider
+from pwg.conversation_providers import DesktopReadProvider, DesktopRenameSurfaceProbe
 from pwg.conversation_state import MissionStore, validate
 from pwg.conversation_host import observe_desktop
+from pwg.rename_c0 import RENAME_CAPABILITIES, discover_rename_route
 
 
 SCOPE = Scope("synthetic-account")
@@ -114,6 +115,27 @@ class CapabilityTests(unittest.TestCase):
         for available, payload in [(set(), native_snapshot()), ({"list_threads"}, {"schemaVersion": 99})]:
             with self.assertRaises(ConversationError):
                 run(DesktopReadProvider(lambda *_: payload, available, bound_scope=SCOPE))
+
+    def test_desktop_rename_surface_probe_is_discovery_only_and_fail_closed(self):
+        blocked = DesktopRenameSurfaceProbe(
+            {"conversation.read_metadata": "PARTIAL"}, bound_scope=SCOPE
+        )
+        result = discover_rename_route([blocked], "session-a", SCOPE)
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertEqual(result.candidates[0].capabilities["conversation.rename"], "UNOBSERVABLE")
+        self.assertFalse(hasattr(blocked, "rename"))
+
+        found = DesktopRenameSurfaceProbe(
+            dict.fromkeys(RENAME_CAPABILITIES, "OBSERVABLE"), bound_scope=SCOPE
+        )
+        result = discover_rename_route([found], "session-a", SCOPE)
+        self.assertEqual((result.status, result.selected.route), ("FOUND", "codex-app-native"))
+        self.assertFalse(hasattr(found, "rename"))
+
+    def test_desktop_rename_surface_probe_rejects_scope_mismatch(self):
+        probe = DesktopRenameSurfaceProbe({}, bound_scope=SCOPE)
+        with self.assertRaises(ConversationError):
+            probe.discover_rename("session-a", Scope("different-account"))
 
 
 class InventoryTests(unittest.TestCase):

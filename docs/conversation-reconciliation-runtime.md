@@ -56,6 +56,14 @@ the app projection, interpreted together with the PARTIAL classification. Projec
 filtering narrows a window; it does not turn that window into a complete project list.
 No private backend endpoint or credential extraction is used.
 
+`DesktopRenameSurfaceProbe` is the zero-mutation bridge for the follow-on rename
+investigation. The host supplies only the capability facts it observed for the
+current session; the probe has no rename method and never uses a canary write to
+test a claim. It reports `FOUND` only when the current surface declares all four
+rename facts observable: exact rename, metadata reacquisition, title verification,
+and non-target verification. Missing facts stay `UNOBSERVABLE`, so a list/metadata
+surface cannot be promoted into a safe rename surface by inference.
+
 ## Local checkpoint and recovery
 
 Default storage is `~/.workspace-governance/conversation-missions/`, outside both
