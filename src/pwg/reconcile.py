@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
+import stat
 
 from .discovery import (
     DiscoveryResult,
@@ -69,6 +70,30 @@ def _evidence_note(mode: str, is_legacy: bool) -> str:
     if is_legacy:
         return "legacy inference"
     return f"explicit {mode} realization"
+
+
+def _directory_path_observation(path: Path) -> tuple[str, dict, str]:
+    """Distinguish missing paths, wrong resource types, and failed observation."""
+    try:
+        observed = path.stat()
+    except FileNotFoundError:
+        return "MISSING", {"path_exists": False}, "registered mapped directory does not exist"
+    except NotADirectoryError:
+        return (
+            "DRIFT",
+            {"path_exists": None, "path_is_directory": False},
+            "mapped path contains a non-directory component",
+        )
+    except OSError:
+        # Do not expose the raw exception; it can contain local path details.
+        return (
+            "UNOBSERVABLE",
+            {"path_exists": None, "path_is_directory": None},
+            "mapped directory type could not be observed",
+        )
+    if not stat.S_ISDIR(observed.st_mode):
+        return "DRIFT", {"path_exists": True, "path_is_directory": False}, "mapped path is not a directory"
+    return "MATCH", {"path_exists": True, "path_is_directory": True}, "mapped directory exists"
 
 
 def _missing_git_or_moved(
@@ -213,18 +238,17 @@ def reconcile(
                     )
                 )
                 continue
-            if not mapped_path.exists():
+            path_status, path_observed, path_note = _directory_path_observation(mapped_path)
+            if path_status != "MATCH":
                 findings.append(
                     Finding(
-                        classification="MISSING",
+                        classification=path_status,
                         subject_id=surface_id,
                         declared=declared,
-                        observed={"path_exists": False},
-                        evidence=[
-                            "registered mapped directory does not exist",
-                            _evidence_note(mode, is_legacy),
-                        ],
-                        confidence="medium",
+                        observed=path_observed,
+                        evidence=[path_note, _evidence_note(mode, is_legacy)],
+                        confidence="high" if path_status == "DRIFT" else "medium",
+                        suggested_operation="REVIEW_LOCAL_PATH" if path_status == "DRIFT" else None,
                         risk="medium",
                     )
                 )
@@ -234,9 +258,9 @@ def reconcile(
                     classification="MATCH",
                     subject_id=surface_id,
                     declared=declared,
-                    observed={"path_exists": True},
+                    observed=path_observed,
                     evidence=[
-                        "mapped directory exists",
+                        path_note,
                         _evidence_note(mode, is_legacy),
                     ],
                     confidence="medium",

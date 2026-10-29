@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
@@ -304,6 +305,53 @@ class RealizationReconcileTests(unittest.TestCase):
             item = next(f for f in findings if f.subject_id == "surf-container")
             self.assertEqual(item.classification, "MATCH")
             self.assertEqual(item.confidence, "medium")
+
+    def test_directory_and_container_mappings_to_files_are_type_drift(self) -> None:
+        for mode in ("directory", "container"):
+            with self.subTest(realization_kind=mode), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                registry = make_base_registry(root)
+                obj(registry, "obj-local", kind="brand" if mode == "container" else "paper")
+                local_surface(registry, "surf-local", "obj-local", realization_kind=mode)
+                mapped_file = root / "mapped-file"
+                mapped_file.write_text("synthetic", encoding="utf-8")
+                home = root / "home"
+                bootstrap_local_state(home, "pc-a", registry)
+                set_mapping(home, "surf-local", mapped_file)
+
+                findings = reconcile(home)
+                item = next(f for f in findings if f.subject_id == "surf-local")
+                self.assertEqual(item.classification, "DRIFT")
+                self.assertEqual(item.observed["path_exists"], True)
+                self.assertEqual(item.observed["path_is_directory"], False)
+                self.assertIn("not a directory", " ".join(item.evidence))
+
+    def test_inaccessible_directory_mapping_is_unobservable_not_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            registry = make_base_registry(root)
+            obj(registry, "obj-paper", kind="paper")
+            local_surface(registry, "surf-paper", "obj-paper", realization_kind="directory")
+            workspace = root / "paper-dir"
+            workspace.mkdir()
+            mapped_path = workspace.resolve()
+            home = root / "home"
+            bootstrap_local_state(home, "pc-a", registry)
+            set_mapping(home, "surf-paper", workspace)
+
+            real_stat = Path.stat
+
+            def deny_mapped_path(path, *args, **kwargs):
+                if path == mapped_path:
+                    raise PermissionError("synthetic inaccessible mapping")
+                return real_stat(path, *args, **kwargs)
+
+            with patch("pwg.reconcile.Path.stat", new=deny_mapped_path):
+                findings = reconcile(home)
+            item = next(f for f in findings if f.subject_id == "surf-paper")
+            self.assertEqual(item.classification, "UNOBSERVABLE")
+            self.assertIsNone(item.observed["path_exists"])
+            self.assertNotIn("synthetic inaccessible mapping", " ".join(item.evidence))
 
     def test_non_git_paper_directory_matches_medium(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
