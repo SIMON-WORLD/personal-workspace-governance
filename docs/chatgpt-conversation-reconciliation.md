@@ -6,6 +6,10 @@ The Phase 2.3A/B read-only candidate implementation and local execution contract
 described in [conversation-reconciliation-runtime.md](conversation-reconciliation-runtime.md).
 Implementation evidence does not authorize Phase 2.3C mutation or replace Parent acceptance.
 
+Issue #8 accepted the Phase 2.3A/B foundation only within the runtime's observed capability
+boundaries. Phase 2.3B did not complete a full account-wide conversation inventory. See the
+[current delivery status](current-status.md) for the accepted scope and open blockers.
+
 This document defines the minimal governance contract for reconciling ChatGPT conversation titles at scale. It applies to ordinary ChatGPT conversations as internal resources. It does not promote chats into Workspace Objects and does not define Project rename, archive/delete, pin mutation, or Codex-session governance.
 
 ## 1. Goal

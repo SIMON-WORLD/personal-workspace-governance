@@ -84,6 +84,16 @@ class MutationSurface:
             raise ConversationError("C0 status does not match capability facts")
 
 
+def _validate_current_surface(surface: MutationSurface, session: str) -> MutationSurface:
+    """Revalidate an observation when reused; construction-time freshness is not durable."""
+    if not isinstance(surface, MutationSurface):
+        raise ConversationError("invalid C0 mutation surface")
+    surface.__post_init__()
+    if surface.session != session:
+        raise ConversationError("C0 capability observation belongs to another runtime session")
+    return surface
+
+
 class MutationProbe(Protocol):
     def discover_rename(self, session: str, scope: Scope) -> MutationSurface: ...
 
@@ -94,11 +104,16 @@ class RouteDiscovery:
     selected: MutationSurface | None
     candidates: tuple[MutationSurface, ...]
     reason: str
+    session: str
+    scope: Scope
 
     def __post_init__(self) -> None:
         if self.status not in ROUTE_STATUSES:
             raise ConversationError("invalid C0 discovery result")
         bounded_text(self.reason, 500)
+        bounded_text(self.session, 120)
+        if not isinstance(self.scope, Scope):
+            raise ConversationError("invalid C0 discovery scope")
         if self.status == "FOUND" and self.selected is None:
             raise ConversationError("C0 found route without selection")
         if self.status == "BLOCKED" and self.selected is not None:
@@ -112,21 +127,21 @@ def discover_rename_route(
     candidates: list[MutationSurface] = []
     for probe in probes:
         try:
-            surface = probe.discover_rename(session, scope)
-            if not isinstance(surface, MutationSurface) or surface.session != session:
-                continue
+            surface = _validate_current_surface(probe.discover_rename(session, scope), session)
             candidates.append(surface)
         except Exception:
             # Provider exceptions may carry headers/content; keep them out of evidence.
             continue
     for surface in candidates:
         if surface.status == "FOUND":
-            return RouteDiscovery("FOUND", surface, tuple(candidates), "usable exact rename route")
+            return RouteDiscovery("FOUND", surface, tuple(candidates), "usable exact rename route",
+                                  session, scope)
     if not candidates:
-        return RouteDiscovery("BLOCKED", None, (), "no current rename-capable provider")
+        return RouteDiscovery("BLOCKED", None, (), "no current rename-capable provider", session, scope)
     return RouteDiscovery(
         "BLOCKED", None, tuple(candidates),
         "current providers lack the complete exact rename/precondition/verification contract",
+        session, scope,
     )
 
 
@@ -274,6 +289,7 @@ def prepare_exact_batch(
     *,
     mission: str,
     scope: Scope,
+    session: str,
     execution_generation: str | None = None,
     selected_ids: list[str] | tuple[str, ...] | None = None,
 ) -> BatchPreparation:
@@ -312,9 +328,17 @@ def prepare_exact_batch(
             return BatchPreparation(3, len(eligible), "BLOCKED", None,
                                     "C0 explicit selection must contain exactly three eligible identities")
         selected = [eligible_by_id[value] for value in selected_ids]
+    if discovery.session != session or discovery.scope != scope:
+        return BatchPreparation(3, len(eligible), "BLOCKED", None,
+                                "C0 discovery belongs to a different session or scope")
     if discovery.status != "FOUND" or discovery.selected is None:
         return BatchPreparation(3, len(eligible), "BLOCKED", None,
                                 "C0 has a bounded selection but no usable current exact rename route")
+    try:
+        _validate_current_surface(discovery.selected, session)
+    except ConversationError:
+        return BatchPreparation(3, len(eligible), "BLOCKED", None,
+                                "C0 rename capability observation expired or belongs to another session")
     generation = execution_generation or str(uuid.uuid4())
     batch = ExactRenameBatch(
         mission, scope, reconciliation_state["proposal_revision"],
@@ -329,6 +353,7 @@ def make_evidence(
     discovery: RouteDiscovery,
     preparation: BatchPreparation,
     *,
+    session: str,
     chatgpt_write_requests: int = 0,
     privacy_check: str = "PASS",
 ) -> dict:
@@ -336,52 +361,88 @@ def make_evidence(
     if chatgpt_write_requests != 0 or privacy_check != "PASS":
         raise ConversationError("C0 evidence invariant failed")
     selected = discovery.selected
+    route_current = discovery.session == session and discovery.scope == Scope(
+        reconciliation_state["scope"]["account"], reconciliation_state["scope"]["project"]
+    )
+    if route_current and selected is not None and discovery.status == "FOUND":
+        try:
+            _validate_current_surface(selected, session)
+        except ConversationError:
+            route_current = False
+    current_status = discovery.status if route_current else "BLOCKED"
+    current_batch = preparation.batch if current_status == "FOUND" else None
     # When every route is blocked, retain the preferred route's observed facts
     # without presenting it as a usable selection. This distinguishes a missing
     # native rename operation from a total lack of runtime discovery.
     observed = selected or (discovery.candidates[0] if discovery.candidates else None)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "stage": "C0",
         "mission": reconciliation_state["semantic"],
         "scope": {"account": reconciliation_state["scope"]["account"],
                   "project": reconciliation_state["scope"]["project"]},
         "proposal_revision": reconciliation_state["proposal_revision"],
         "inventory_generation": reconciliation_state["inventory_generation"],
-        "mutation_surface": discovery.status,
+        "mutation_surface": current_status,
         "route_provider": observed.provider if observed else None,
         "route": observed.route if observed else None,
+        "route_observed_at": observed.observed_at if observed else None,
         "capabilities": observed.capabilities if observed else {
             name: "UNAVAILABLE" for name in RENAME_CAPABILITIES
         },
         "route_candidates": len(discovery.candidates),
         "batch_requested": 3,
         "batch_eligible": preparation.eligible_count,
-        "batch_prepared": 3 if preparation.batch else 0,
-        "batch_binding": _batch_binding(preparation.batch),
+        "batch_prepared": 3 if current_batch else 0,
+        "batch_binding": _batch_binding(current_batch),
         "confidence_class": "HIGH_CONFIDENCE_ONLY",
         "privacy_check": privacy_check,
         "chatgpt_write_requests": chatgpt_write_requests,
         "c1_safe_to_authorize": bool(
-            preparation.batch and discovery.status == "FOUND" and chatgpt_write_requests == 0
+            current_batch and current_status == "FOUND" and chatgpt_write_requests == 0
         ),
-        "blocker": None if preparation.batch else preparation.reason,
+        "blocker": None if current_batch else (
+            "C0 rename capability observation expired or session/scope binding changed"
+            if preparation.batch and not route_current else preparation.reason
+        ),
         "observed_at": _now(),
     }
 
 
 def validate_evidence(evidence: dict) -> None:
+    legacy_without_route_time = (
+        isinstance(evidence, dict)
+        and evidence.get("schema_version") == 1
+        and "route_observed_at" not in evidence
+    )
+    if legacy_without_route_time:
+        evidence = {**evidence, "route_observed_at": None}
     _keys(evidence, "schema_version stage mission scope proposal_revision inventory_generation "
-          "mutation_surface route_provider route capabilities route_candidates batch_requested "
+          "mutation_surface route_provider route route_observed_at capabilities route_candidates batch_requested "
           "batch_eligible batch_prepared batch_binding confidence_class privacy_check "
           "chatgpt_write_requests c1_safe_to_authorize blocker observed_at")
-    if evidence["schema_version"] != 1 or evidence["stage"] != "C0":
+    if (type(evidence["schema_version"]) is not int
+            or evidence["schema_version"] not in {1, 2}
+            or (evidence["schema_version"] == 1 and not legacy_without_route_time)
+            or evidence["stage"] != "C0"):
         raise ConversationError("unsupported C0 evidence")
     bounded_text(evidence["mission"], 200)
     _keys(evidence["scope"], "account project")
     bounded_text(evidence["scope"]["account"], 200)
     if evidence["scope"]["project"] is not None:
         bounded_text(evidence["scope"]["project"], 200)
+    if evidence["route_provider"] is None or evidence["route"] is None:
+        if (evidence["route_provider"] is not None or evidence["route"] is not None
+                or evidence["route_observed_at"] is not None):
+            raise ConversationError("incomplete C0 route observation")
+    else:
+        bounded_text(evidence["route_provider"], 100)
+        bounded_text(evidence["route"], 120)
+        if evidence["route_observed_at"] is None:
+            if not legacy_without_route_time:
+                raise ConversationError("C0 route is missing its observation time")
+        else:
+            _historical_timestamp(evidence["route_observed_at"])
     for key in ("proposal_revision", "inventory_generation", "route_candidates", "batch_requested",
                 "batch_eligible", "batch_prepared", "chatgpt_write_requests"):
         if type(evidence[key]) is not int or evidence[key] < 0:
@@ -411,6 +472,9 @@ def validate_evidence(evidence: dict) -> None:
             raise ConversationError("C0 batch inventory generation mismatch")
     if evidence["mutation_surface"] not in ROUTE_STATUSES:
         raise ConversationError("invalid C0 mutation surface")
+    if (evidence["mutation_surface"] == "FOUND" and evidence["route_observed_at"] is None
+            and not legacy_without_route_time):
+        raise ConversationError("found C0 route is missing its observation time")
     if set(evidence["capabilities"]) != set(RENAME_CAPABILITIES):
         raise ConversationError("invalid C0 capability evidence")
     if not set(evidence["capabilities"].values()) <= CAPABILITY_STATES:
@@ -419,14 +483,28 @@ def validate_evidence(evidence: dict) -> None:
         raise ConversationError("C0 privacy/write invariant failed")
     if type(evidence["c1_safe_to_authorize"]) is not bool:
         raise ConversationError("invalid C0 authorization state")
-    # Historical evidence remains independently readable; capability freshness is
-    # enforced on MutationSurface discovery, immediately before any future C1 gate.
+    # Historical evidence remains readable. `route_observed_at` preserves the
+    # original capability timestamp; freshness is checked before creating or
+    # recovering an actionable batch.
     _historical_timestamp(evidence["observed_at"])
     if evidence["c1_safe_to_authorize"] != (
         evidence["batch_prepared"] == 3 and evidence["mutation_surface"] == "FOUND"
         and evidence["batch_binding"] is not None
     ):
         raise ConversationError("C0 authorization state inconsistent")
+
+
+def _batch_matches_evidence(batch: ExactRenameBatch, evidence: dict) -> bool:
+    """Require the batch and evidence to describe the same exact authorization unit."""
+    return (
+        batch.mission == evidence["mission"]
+        and asdict(batch.scope) == evidence["scope"]
+        and batch.provider == evidence["route_provider"]
+        and batch.route == evidence["route"]
+        and batch.proposal_revision == evidence["proposal_revision"]
+        and batch.inventory_generation == evidence["inventory_generation"]
+        and evidence["batch_binding"] == _batch_binding(batch)
+    )
 
 
 class C0Store:
@@ -454,11 +532,9 @@ class C0Store:
         if batch is not None:
             if not evidence["c1_safe_to_authorize"]:
                 raise ConversationError("cannot store an unsafe prepared batch")
-            if (batch.mission != evidence["mission"]
-                    or batch.proposal_revision != evidence["proposal_revision"]
-                    or batch.inventory_generation != evidence["inventory_generation"]
-                    or evidence["batch_binding"] != _batch_binding(batch)):
+            if not _batch_matches_evidence(batch, evidence):
                 raise ConversationError("C0 batch binding mismatch")
+            _timestamp(evidence.get("route_observed_at"))
         self.home.mkdir(parents=True, exist_ok=True)
         evidence_path, batch_path = self._paths(evidence["mission"])
         if batch is None:
@@ -496,11 +572,11 @@ class C0Store:
             batch = _batch_from_dict(json.loads(batch_path.read_text(encoding="utf-8")))
         except Exception:
             return evidence, None
-        binding = evidence["batch_binding"]
-        if (batch.mission != evidence["mission"]
-                or batch.proposal_revision != evidence["proposal_revision"]
-                or batch.inventory_generation != evidence["inventory_generation"]
-                or binding != _batch_binding(batch)):
+        if not _batch_matches_evidence(batch, evidence):
+            return evidence, None
+        try:
+            _timestamp(evidence.get("route_observed_at"))
+        except ConversationError:
             return evidence, None
         return evidence, batch
 

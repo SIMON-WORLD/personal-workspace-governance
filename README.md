@@ -10,6 +10,8 @@ This project defines a durable model for organizing and reconciling personal wor
 
 Architecture v0.2 is the current design baseline. Phase 2.1 adds the first executable local-realization toolkit: machine-local bootstrap, explicit path mapping, opt-in trusted roots, bounded Git metadata discovery, and read-only reconciliation. The implementation remains conservative by design: no whole-disk scan, automatic filesystem move, automatic registry write, or content indexing.
 
+Phase 2.3A/B is accepted as a **read-only foundation limited by the capabilities observed at execution time**; it does not establish a complete, account-wide conversation inventory. The Phase 2.3C C0 preflight is merged, while C1 remains unauthorized and no real ChatGPT write has been executed. Rename-surface and minimal-context adapters are still experiments in Draft PRs #18 and #19, both on HOLD. See the [current delivery status](docs/current-status.md) for the evidence links and remaining boundaries.
+
 ## Core model
 
 The durable model is intentionally small:
@@ -62,6 +64,7 @@ A real personal instance belongs in a separate private registry. Machine-local p
 - [`docs/architecture.md`](docs/architecture.md) — architecture and source-of-truth boundaries.
 - [`docs/lifecycle-and-registration.md`](docs/lifecycle-and-registration.md) — capture, registration, lifecycle, graduation, and retirement.
 - [`docs/chatgpt-ui-conventions.md`](docs/chatgpt-ui-conventions.md) — ChatGPT-specific Section, naming, icon, color, pin, chat-title, cloud/local, and machine-ID conventions.
+- [`docs/current-status.md`](docs/current-status.md) — current accepted, experimental, blocked, and not-executed work with Issue/PR evidence.
 - [`docs/local-realization.md`](docs/local-realization.md) — Phase 2.1 machine-local bootstrap, mapping, discovery, and reconciliation.
 - [`profiles/chatgpt-default.yaml`](profiles/chatgpt-default.yaml) — machine-readable default ChatGPT UI projection profile.
 - [`docs/change-protocol.md`](docs/change-protocol.md) — safe structural mutation protocol.

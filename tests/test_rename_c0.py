@@ -1,6 +1,6 @@
 """Synthetic Stage C0 tests; no real account identifiers or titles appear here."""
-from dataclasses import asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, replace
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -23,6 +23,13 @@ from pwg.rename_c0 import (
 
 
 SCOPE = Scope("synthetic-account")
+SESSION = "synthetic-session"
+
+
+class SixMinutesLater(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return datetime.now(tz) + timedelta(minutes=6)
 
 
 def synthetic_state(count=3):
@@ -56,7 +63,7 @@ def synthetic_state(count=3):
     }
 
 
-def surface(status="FOUND", route="synthetic-ui"):
+def surface(status="FOUND", route="synthetic-ui", session=SESSION):
     states = {name: "OBSERVABLE" for name in (
         "conversation.rename", "conversation.read_metadata",
         "conversation.verify_title", "conversation.verify_non_target_fields_unchanged")}
@@ -65,14 +72,14 @@ def surface(status="FOUND", route="synthetic-ui"):
         reason = "synthetic route lacks title-only mutation"
     else:
         reason = "synthetic route supports exact canary"
-    return MutationSurface("synthetic", route, "synthetic-session", now(), states, status, reason)
+    return MutationSurface("synthetic", route, session, now(), states, status, reason)
 
 
 class C0Tests(unittest.TestCase):
     def test_discovery_prefers_current_complete_route_and_does_not_mutate(self):
         blocked = StaticMutationProbe(surface("BLOCKED", "desktop-native"))
         found = StaticMutationProbe(surface("FOUND", "browser-ui"))
-        discovery = discover_rename_route([blocked, found], "synthetic-session", SCOPE)
+        discovery = discover_rename_route([blocked, found], SESSION, SCOPE)
         self.assertEqual(discovery.status, "FOUND")
         self.assertEqual(discovery.selected.route, "browser-ui")
         self.assertEqual(len(discovery.candidates), 2)
@@ -90,15 +97,64 @@ class C0Tests(unittest.TestCase):
         class Broken:
             def discover_rename(self, session, scope):
                 raise RuntimeError("credential-header-not-for-output")
-        result = discover_rename_route([Broken(), blocked], "synthetic-session", SCOPE)
+        result = discover_rename_route([Broken(), blocked], SESSION, SCOPE)
         self.assertEqual(result.status, "BLOCKED")
         self.assertNotIn("credential", result.reason)
+
+    def test_discovery_and_batch_preparation_recheck_surface_freshness_and_session(self):
+        old_surface = StaticMutationProbe(surface())
+        with patch("pwg.rename_c0.datetime", SixMinutesLater):
+            expired_discovery = discover_rename_route([old_surface], SESSION, SCOPE)
+        self.assertEqual(expired_discovery.status, "BLOCKED")
+        self.assertEqual(expired_discovery.candidates, ())
+
+        wrong_session = discover_rename_route(
+            [StaticMutationProbe(surface(session="another-session"))], SESSION, SCOPE
+        )
+        self.assertEqual(wrong_session.status, "BLOCKED")
+        self.assertEqual(wrong_session.candidates, ())
+
+        current_discovery = discover_rename_route([StaticMutationProbe(surface())], SESSION, SCOPE)
+        state = synthetic_state()
+        with patch("pwg.rename_c0.datetime", SixMinutesLater):
+            expired_preparation = prepare_exact_batch(
+                state, current_discovery, mission=state["semantic"], scope=SCOPE, session=SESSION
+            )
+        self.assertEqual(expired_preparation.status, "BLOCKED")
+        self.assertIsNone(expired_preparation.batch)
+
+        replaced_session = prepare_exact_batch(
+            state, current_discovery, mission=state["semantic"], scope=SCOPE,
+            session="replacement-session",
+        )
+        self.assertEqual(replaced_session.status, "BLOCKED")
+        self.assertIsNone(replaced_session.batch)
+
+    def test_evidence_does_not_refresh_an_expired_capability_observation(self):
+        state = synthetic_state()
+        observed = surface()
+        discovery = discover_rename_route([StaticMutationProbe(observed)], SESSION, SCOPE)
+        preparation = prepare_exact_batch(
+            state, discovery, mission=state["semantic"], scope=SCOPE, session=SESSION
+        )
+        self.assertEqual(preparation.status, "PREPARED")
+
+        with patch("pwg.rename_c0.datetime", SixMinutesLater):
+            evidence = make_evidence(state, discovery, preparation, session=SESSION)
+
+        self.assertEqual(evidence["route_observed_at"], observed.observed_at)
+        self.assertNotEqual(evidence["observed_at"], evidence["route_observed_at"])
+        self.assertEqual(evidence["mutation_surface"], "BLOCKED")
+        self.assertEqual(evidence["batch_prepared"], 0)
+        self.assertFalse(evidence["c1_safe_to_authorize"])
+        validate_evidence(evidence)
 
     def test_exact_three_batch_binds_revisions_and_native_preconditions(self):
         state = synthetic_state()
         result = prepare_exact_batch(
-            state, discover_rename_route([StaticMutationProbe(surface())], "synthetic-session", SCOPE),
-            mission=state["semantic"], scope=SCOPE, execution_generation="generation-1",
+            state, discover_rename_route([StaticMutationProbe(surface())], SESSION, SCOPE),
+            mission=state["semantic"], scope=SCOPE, session=SESSION,
+            execution_generation="generation-1",
         )
         self.assertEqual(result.status, "PREPARED")
         self.assertEqual(len(result.batch.items), 3)
@@ -109,44 +165,47 @@ class C0Tests(unittest.TestCase):
                          ["synthetic-0", "synthetic-1", "synthetic-2"])
 
     def test_batch_requires_exactly_three_and_never_substitutes(self):
-        route = discover_rename_route([StaticMutationProbe(surface())], "synthetic-session", SCOPE)
+        route = discover_rename_route([StaticMutationProbe(surface())], SESSION, SCOPE)
         for count in (0, 2, 4):
             result = prepare_exact_batch(synthetic_state(count), route,
-                                         mission="synthetic-reconciliation", scope=SCOPE)
+                                         mission="synthetic-reconciliation", scope=SCOPE, session=SESSION)
             self.assertEqual(result.status, "BLOCKED")
             self.assertIsNone(result.batch)
             self.assertEqual(result.requested_size, 3)
         selected = prepare_exact_batch(
             synthetic_state(4), route, mission="synthetic-reconciliation", scope=SCOPE,
+            session=SESSION,
             selected_ids=["synthetic-3", "synthetic-1", "synthetic-0"],
             execution_generation="generation-selected",
         )
         self.assertEqual((selected.status, selected.eligible_count), ("PREPARED", 4))
         self.assertEqual([item.conversation_id for item in selected.batch.items],
                          ["synthetic-0", "synthetic-1", "synthetic-3"])
-        blocked = discover_rename_route([StaticMutationProbe(surface("BLOCKED"))], "synthetic-session", SCOPE)
+        blocked = discover_rename_route([StaticMutationProbe(surface("BLOCKED"))], SESSION, SCOPE)
         result = prepare_exact_batch(synthetic_state(), blocked,
-                                     mission="synthetic-reconciliation", scope=SCOPE)
+                                     mission="synthetic-reconciliation", scope=SCOPE, session=SESSION)
         self.assertEqual((result.status, result.eligible_count), ("BLOCKED", 3))
 
     def test_c0_evidence_is_aggregate_only_and_requires_zero_writes(self):
         state = synthetic_state(2)
-        discovery = discover_rename_route([StaticMutationProbe(surface("BLOCKED"))], "synthetic-session", SCOPE)
-        preparation = prepare_exact_batch(state, discovery, mission=state["semantic"], scope=SCOPE)
-        evidence = make_evidence(state, discovery, preparation)
+        discovery = discover_rename_route([StaticMutationProbe(surface("BLOCKED"))], SESSION, SCOPE)
+        preparation = prepare_exact_batch(state, discovery, mission=state["semantic"], scope=SCOPE,
+                                          session=SESSION)
+        evidence = make_evidence(state, discovery, preparation, session=SESSION)
         validate_evidence(evidence)
         serialized = str(evidence)
         self.assertNotIn("synthetic-0", serialized)
         self.assertNotIn("Topic 0", serialized)
         self.assertFalse(evidence["c1_safe_to_authorize"])
         with self.assertRaises(ConversationError):
-            make_evidence(state, discovery, preparation, chatgpt_write_requests=1)
+            make_evidence(state, discovery, preparation, session=SESSION, chatgpt_write_requests=1)
 
     def test_historical_evidence_remains_readable_after_capability_expiry(self):
         state = synthetic_state(2)
-        discovery = discover_rename_route([StaticMutationProbe(surface("BLOCKED"))], "synthetic-session", SCOPE)
+        discovery = discover_rename_route([StaticMutationProbe(surface("BLOCKED"))], SESSION, SCOPE)
         evidence = make_evidence(state, discovery,
-                                 prepare_exact_batch(state, discovery, mission=state["semantic"], scope=SCOPE))
+                                 prepare_exact_batch(state, discovery, mission=state["semantic"],
+                                                     scope=SCOPE, session=SESSION), session=SESSION)
         evidence["observed_at"] = "2000-01-01T00:00:00+00:00"
         validate_evidence(evidence)
 
@@ -154,10 +213,11 @@ class C0Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary) / "c0"
             state = synthetic_state()
-            discovery = discover_rename_route([StaticMutationProbe(surface())], "synthetic-session", SCOPE)
+            discovery = discover_rename_route([StaticMutationProbe(surface())], SESSION, SCOPE)
             prep = prepare_exact_batch(state, discovery, mission=state["semantic"], scope=SCOPE,
+                                       session=SESSION,
                                        execution_generation="generation-1")
-            evidence = make_evidence(state, discovery, prep)
+            evidence = make_evidence(state, discovery, prep, session=SESSION)
             store = C0Store(home, forbidden_roots=(Path(temporary) / "registry",))
             evidence_path, batch_path = store.write(evidence, prep.batch)
             self.assertTrue(evidence_path.exists())
@@ -178,23 +238,101 @@ class C0Tests(unittest.TestCase):
             with self.assertRaises(ConversationError):
                 C0Store(Path(temporary) / "registry" / "state", forbidden_roots=(Path(temporary) / "registry",))
 
+    def test_store_rejects_scope_provider_and_route_mismatches(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = C0Store(Path(temporary) / "c0")
+            state = synthetic_state()
+            discovery = discover_rename_route([StaticMutationProbe(surface())], SESSION, SCOPE)
+            preparation = prepare_exact_batch(
+                state, discovery, mission=state["semantic"], scope=SCOPE, session=SESSION,
+                execution_generation="generation-1",
+            )
+            batch = preparation.batch
+            evidence = make_evidence(state, discovery, preparation, session=SESSION)
+            evidence_path, batch_path = store.write(evidence, batch)
+
+            bad_batches = (
+                replace(batch, scope=Scope("other-account")),
+                replace(batch, provider="other-provider"),
+                replace(batch, route="other-route"),
+            )
+            for bad_batch in bad_batches:
+                with self.assertRaises(ConversationError):
+                    store.write(evidence, bad_batch)
+
+            mutations = (
+                ("scope", {"account": "other-account", "project": None}),
+                ("route_provider", "other-provider"),
+                ("route", "other-route"),
+            )
+            for field, value in mutations:
+                mismatched = json.loads(json.dumps(evidence))
+                mismatched[field] = value
+                with self.assertRaises(ConversationError):
+                    store.write(mismatched, batch)
+                evidence_path.write_text(json.dumps(mismatched), encoding="utf-8")
+                _, recovered_batch = store.recover(state["semantic"])
+                self.assertIsNone(recovered_batch, field)
+                evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+            self.assertTrue(batch_path.exists())
+
+    def test_recovery_keeps_history_but_expires_actionable_route(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = C0Store(Path(temporary) / "c0")
+            state = synthetic_state()
+            discovery = discover_rename_route([StaticMutationProbe(surface())], SESSION, SCOPE)
+            preparation = prepare_exact_batch(
+                state, discovery, mission=state["semantic"], scope=SCOPE, session=SESSION
+            )
+            evidence = make_evidence(state, discovery, preparation, session=SESSION)
+            store.write(evidence, preparation.batch)
+            with patch("pwg.rename_c0.datetime", SixMinutesLater):
+                recovered_evidence, recovered_batch = store.recover(state["semantic"])
+            self.assertEqual(recovered_evidence["route_observed_at"], evidence["route_observed_at"])
+            self.assertIsNone(recovered_batch)
+
+    def test_legacy_evidence_is_readable_but_cannot_recover_an_actionable_batch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = C0Store(Path(temporary) / "c0")
+            state = synthetic_state()
+            discovery = discover_rename_route([StaticMutationProbe(surface())], SESSION, SCOPE)
+            preparation = prepare_exact_batch(
+                state, discovery, mission=state["semantic"], scope=SCOPE, session=SESSION
+            )
+            evidence = make_evidence(state, discovery, preparation, session=SESSION)
+            legacy = dict(evidence)
+            legacy["schema_version"] = 1
+            legacy.pop("route_observed_at")
+            evidence_path, batch_path = store._paths(state["semantic"])
+            evidence_path.parent.mkdir(parents=True)
+            evidence_path.write_text(json.dumps(legacy), encoding="utf-8")
+            batch_path.write_text(json.dumps(_batch_to_dict(preparation.batch)), encoding="utf-8")
+
+            recovered_evidence, recovered_batch = store.recover(state["semantic"])
+            self.assertEqual(recovered_evidence["schema_version"], 1)
+            self.assertIsNone(recovered_batch)
+
     def test_prepared_to_blocked_revokes_old_actionable_batch(self):
         with tempfile.TemporaryDirectory() as temporary:
             store = C0Store(Path(temporary) / "c0")
             state = synthetic_state(3)
-            found = discover_rename_route([StaticMutationProbe(surface())], "synthetic-session", SCOPE)
+            found = discover_rename_route([StaticMutationProbe(surface())], SESSION, SCOPE)
             prepared = prepare_exact_batch(
                 state, found, mission=state["semantic"], scope=SCOPE,
+                session=SESSION,
                 execution_generation="generation-1",
             )
-            store.write(make_evidence(state, found, prepared), prepared.batch)
+            store.write(make_evidence(state, found, prepared, session=SESSION), prepared.batch)
             blocked_state = synthetic_state(2)
             blocked = discover_rename_route(
-                [StaticMutationProbe(surface("BLOCKED"))], "synthetic-session", SCOPE
+                [StaticMutationProbe(surface("BLOCKED"))], SESSION, SCOPE
             )
             blocked_evidence = make_evidence(
                 blocked_state, blocked,
-                prepare_exact_batch(blocked_state, blocked, mission=blocked_state["semantic"], scope=SCOPE),
+                prepare_exact_batch(blocked_state, blocked, mission=blocked_state["semantic"],
+                                    scope=SCOPE, session=SESSION),
+                session=SESSION,
             )
             evidence_path, batch_path = store.write(blocked_evidence)
             self.assertTrue(evidence_path.exists())
@@ -208,15 +346,17 @@ class C0Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             store = C0Store(Path(temporary) / "c0")
             state = synthetic_state(3)
-            found = discover_rename_route([StaticMutationProbe(surface())], "synthetic-session", SCOPE)
+            found = discover_rename_route([StaticMutationProbe(surface())], SESSION, SCOPE)
             first = prepare_exact_batch(
                 state, found, mission=state["semantic"], scope=SCOPE,
+                session=SESSION,
                 execution_generation="generation-1",
             )
-            first_evidence = make_evidence(state, found, first)
+            first_evidence = make_evidence(state, found, first, session=SESSION)
             evidence_path, batch_path = store.write(first_evidence, first.batch)
             second = prepare_exact_batch(
                 state, found, mission=state["semantic"], scope=SCOPE,
+                session=SESSION,
                 execution_generation="generation-2",
             )
             batch_path.write_text(json.dumps(_batch_to_dict(second.batch)), encoding="utf-8")
@@ -237,7 +377,7 @@ class C0Tests(unittest.TestCase):
 
             with patch("pwg.rename_c0.os.replace", side_effect=fail_second_replace):
                 with self.assertRaises(OSError):
-                    store.write(make_evidence(state, found, second), second.batch)
+                    store.write(make_evidence(state, found, second, session=SESSION), second.batch)
             self.assertEqual(replace_calls, 2)
             self.assertFalse(batch_path.exists())
             recovered_evidence, recovered_batch = store.recover(state["semantic"])
@@ -248,9 +388,10 @@ class C0Tests(unittest.TestCase):
     def test_batch_rejects_structural_or_ambiguous_proposals(self):
         state = synthetic_state()
         state["proposals"][0]["reason"] = "structural_title"
-        result = prepare_exact_batch(state,
-                                     discover_rename_route([StaticMutationProbe(surface())], "synthetic-session", SCOPE),
-                                     mission=state["semantic"], scope=SCOPE)
+        result = prepare_exact_batch(
+            state, discover_rename_route([StaticMutationProbe(surface())], SESSION, SCOPE),
+            mission=state["semantic"], scope=SCOPE, session=SESSION,
+        )
         self.assertEqual((result.status, result.eligible_count), ("BLOCKED", 2))
 
 
